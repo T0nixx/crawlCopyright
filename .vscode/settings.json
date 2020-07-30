@@ -1,0 +1,5 @@
+{
+    // "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true,
+    "python.pythonPath": "C:\\Users\\Oh\\.virtualenvs\\crawlCopyright-u4lIG4EI\\Scripts\\python.exe"
+}
