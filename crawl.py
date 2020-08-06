@@ -16,11 +16,11 @@ def request_with_fake_headers(url):
 
 def classify_tag(tag: bs4.Tag) -> str:
     category_keywords_dictionary = {
-        "webtoon": ["웹툰", "webtoon", "애니", "만화"],
+        "webtoon": ["웹툰", "webtoon", "애니", "만화", "툰", "코믹"],
         "sportslive": ["스포츠라이브", "중계", "sportslive"],
+        "torrent": ["토렌트", "torrent", "토렌토", "토렌", "토랜"],
+        "streaming": ["다시보기", "영화", "드라마", "TV", "티비"],
         "adult": ["성인", "야동", "19영상", "서양", "동양"],
-        "torrent": ["토렌트", "torrent", "토렌토"],
-        "streaming": ["다시보기", "영화", "드라마", "TV"],
         "link": ["링크", "주소", "link"],
     }
 
@@ -30,7 +30,12 @@ def classify_tag(tag: bs4.Tag) -> str:
     return "else"
 
 
-def get_category_dictionary_from_a_tags(a_tags: List[bs4.Tag]):
+# TODO: 조정 필요함 사이트마다 다른 부분이라 어쩔 수 없나 싶기도 한데
+def gnu_board_url_trim(url: str) -> str:
+    return url.find("&wr_id") == -1 and url or url[: url.find("&wr_id")]
+
+
+def get_category_dictionary_from_a_tags(a_tags: List[bs4.Tag], index_url: str):
     categories = [
         "webtoon",
         "sportslive",
@@ -42,9 +47,10 @@ def get_category_dictionary_from_a_tags(a_tags: List[bs4.Tag]):
     return {
         category: set(
             [
-                a_tag["href"].strip()
+                gnu_board_url_trim(a_tag["href"].strip())
                 for a_tag in a_tags
-                if classify_tag(a_tag) == category
+                if (classify_tag(a_tag) == category)
+                and (index_url in a_tag["href"].strip())
             ]
         )
         for category in categories
@@ -58,7 +64,9 @@ def get_category_dictionary_from_index_page(index_url: str):
         "\n".join([str(div_tag) for div_tag in soup.find_all("div", limit=5)]),
         "html5lib",
     )
-    return get_category_dictionary_from_a_tags(div_soup.find_all("a", {"href": True}))
+    return get_category_dictionary_from_a_tags(
+        div_soup.find_all("a", {"href": True}), index_url
+    )
 
 
 def get_target_urls_from_category_url(category_url: str, main_url: str) -> Set[str]:
@@ -85,9 +93,27 @@ def get_target_urls_from_category_url(category_url: str, main_url: str) -> Set[s
     )
 
 
-print(get_category_dictionary_from_index_page("https://linkmoum.net/"))
+main_urls = [
+    "https://linkmoum.net/",
+    "https://prolink1.com/",
+    "https://jusomoya.com/",
+    "https://podo10.com/",
+    "https://linkbom.net/",
+    "https://truemoa1.com/",
+    "https://linkzip.site/",
+    "https://www.linkmap.me/",
+    "https://www.linkmoon2.me/#",
+    "https://linkpan21.com/",
+    "https://www.bobaelink.net/",
+    "https://www.mango15.me/",
+    "https://www.dailylink1.xyz/",
+]
+# print(get_category_dictionary_from_index_page("https://linkmoum.net/"))
+
+# for url in main_urls:
+# print(get_category_dictionary_from_index_page(url))
 print(
     get_target_urls_from_category_url(
-        "https://linkmoum.net/index.php?mid=webtoon", "https://linkmoum.net/"
+        "https://linkzip.site/board_SnzU08", "https://linkzip.site/"
     )
 )
