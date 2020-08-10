@@ -119,6 +119,23 @@ def get_external_urls_from_a_soup_and_main_url(
     )
 
 
+def get_internal_urls_from_a_soup_and_main_url(
+    a_soup: bs4.BeautifulSoup, main_url: str
+) -> Set[str]:
+    stripped = [a_tag["href"].strip() for a_tag in a_soup.find_all("a", {"href": True})]
+    internal_urls_set = set(stripped).difference(
+        get_external_urls_from_a_soup_and_main_url(a_soup, main_url)
+    )
+    return set(
+        [
+            # http 로 시작하지 않고 /board #~ 이런 식의 url 처리 좀 더 지켜봐야함
+            "http" in internal_url and internal_url or main_url + internal_url
+            for internal_url in internal_urls_set
+            # if parse_qsl(internal_url)
+        ]
+    )
+
+
 def get_a_soup_from_url(url: str):
     response = request_with_fake_headers(url)
     return bs4.BeautifulSoup(response.content, "html5lib")
@@ -130,14 +147,16 @@ def get_a_soup_of_difference(
 ) -> bs4.BeautifulSoup:
     # TODO: 정규 표현식 더 상세하게 수정 필요
     pattern = re.compile("<a.*>")
+    # diff 성능이 좋지 않은 사이트들이 있음
     diff = difflib.unified_diff(
         a_soup.prettify().splitlines(), b_soup.prettify().splitlines()
     )
+
     a_tags_of_diff = pattern.findall("\n".join(filter(lambda x: x[0] == "-", diff)))
     return bs4.BeautifulSoup("\n".join(a_tags_of_diff), "html5lib")
 
 
-def get_result(category_url, main_url: str):
+def get_result(category_url: str, main_url: str):
     category_a_soup = get_a_soup_from_url(category_url)
     main_a_soup = get_a_soup_from_url(main_url)
     a_soup_of_category_diff_main = get_a_soup_of_difference(
@@ -146,92 +165,36 @@ def get_result(category_url, main_url: str):
 
     next_page_url = get_next_page_url(a_soup_of_category_diff_main, category_url)
     next_page_url != None
-    result = set()
-    result.update(
-        get_external_urls_from_category_url(a_soup_of_category_diff_main, main_url)
-    )
+
     category_soups: List[bs4.BeautifulSoup] = [category_a_soup]
     while next_page_url != None:
         current_page_url = next_page_url
         current_page_a_soup = get_a_soup_from_url(current_page_url)
         # main 과 비교해야 페이지가 있는 a tag 가 살아있음
         current_diff_a_soup = get_a_soup_of_difference(current_page_a_soup, main_a_soup)
-        result.update(
-            get_external_urls_from_category_url(current_diff_a_soup, main_url)
-        )
         category_soups.append(current_page_a_soup)
         next_page_url = get_next_page_url(current_diff_a_soup, current_page_url)
-    # return result
-    return (
+
+    diff_soups = (
         len(category_soups) > 1
-        and result.difference(
-            get_external_urls_from_category_url(
-                category_soups[1], main_url
-            ).intersection(
-                get_external_urls_from_category_url(category_soups[0], main_url)
+        and [
+            # 다음 페이지가 있으면 여기서 자기들 끼리 비교해서 page 관련 태그를 없애고자 함
+            get_a_soup_of_difference(category_soups[index], category_soups[index - 1])
+            for index, _ in enumerate(category_soups)
+        ]
+        or [a_soup_of_category_diff_main]
             )
-        )
-        or result
-    )
 
-
-main_urls = [
-    "https://linkmoum.net/",
-    "https://prolink1.com/",
-    "https://jusomoya.com/",
-    "https://podo10.com/",
-    "https://linkbom.net/",
-    "https://truemoa1.com/",
-    "https://linkzip.site/",
-    "https://www.linkmap.me/",
-    "https://www.linkmoon2.me/#",
-    "https://linkpan21.com/",
-    "https://www.bobaelink.net/",
-    "https://www.mango15.me/",
-    "https://www.dailylink1.xyz/",
-]
-# print(get_category_dictionary_from_index_page("https://linkmoum.net/"))
-
-# for url in main_urls:
-# print(get_category_dictionary_from_index_page(url))
-
-# get_a_soup_of_difference(
-#     "https://jusomoya.com/bbs/board.php?bo_table=wt", "https://jusomoya.com/"
-# )
-
-# get_a_soup_of_difference("https://podo10.com/adult", "https://podo10.com/")
-# print(
-#     get_result(
-#         "https://linkbom.net/bbs/board.php?bo_table=webtoon", "https://linkbom.net/"
-#     )
-# )
-
-# print(
-#     # get_result(
-#     #     "https://jusomoya.com/bbs/board.php?bo_table=wt&page=1", "https://jusomoya.com/"
-#     # )
-#     get_result(
-#         "https://linkbom.net/bbs/board.php?bo_table=webtoon", "https://linkbom.net/"
-#     )
-# )
-
-main_url = "https://linkbom.net/"
-print(
-    get_external_urls_from_category_url(
-        get_a_soup_from_url("https://linkbom.net/bbs/board.php?bo_table=webtoon"),
-        main_url,
-    ).intersection(
-        get_external_urls_from_category_url(
-            get_a_soup_from_url(
-                "https://linkbom.net/bbs/board.php?bo_table=webtoon&page=2"
+    return [
+        {
+            "external": get_external_urls_from_a_soup_and_main_url(diff_soup, main_url),
+            "internal": set(
+                # category_url로 필터하면 main_url에 붙여서 만든 internal_url 들이 걸러질 것
+                filter(
+                    lambda url: category_url in url,
+                    get_internal_urls_from_a_soup_and_main_url(diff_soup, main_url),
+                )
             ),
-            main_url,
-        )
-    )
-)
-
-# cate = get_a_soup_from_url("https://linkbom.net/bbs/board.php?bo_table=webtoon")
-# main = get_a_soup_from_url("https://linkbom.net/")
-# diff = get_a_soup_of_difference(cate, main)
-# print([tag for tag in diff.find_all("a", {"href": True}) if "page=" in tag["href"]])
-
+        }
+        for diff_soup in diff_soups
+]
