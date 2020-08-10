@@ -36,7 +36,7 @@ def gnu_board_url_trim(url: str) -> str:
     return url.find("&wr_id") == -1 and url or url[: url.find("&wr_id")]
 
 
-def get_category_dictionary_from_a_tags(a_tags: List[bs4.Tag], index_url: str):
+def get_category_dictionary_from_a_tags(a_tags: List[bs4.Tag], main_url: str):
     categories = [
         "webtoon",
         "sportslive",
@@ -51,22 +51,22 @@ def get_category_dictionary_from_a_tags(a_tags: List[bs4.Tag], index_url: str):
                 gnu_board_url_trim(a_tag["href"].strip())
                 for a_tag in a_tags
                 if (classify_tag(a_tag) == category)
-                and (index_url in a_tag["href"].strip())
+                and (main_url in a_tag["href"].strip())
             ]
         )
         for category in categories
     }
 
 
-def get_category_dictionary_from_index_page(index_url: str):
-    response = request_with_fake_headers(index_url)
+def get_category_dictionary_from_main_page(main_url: str):
+    response = request_with_fake_headers(main_url)
     soup = bs4.BeautifulSoup(response.content, "html5lib")
     div_soup = bs4.BeautifulSoup(
         "\n".join([str(div_tag) for div_tag in soup.find_all("div", limit=5)]),
         "html5lib",
     )
     return get_category_dictionary_from_a_tags(
-        div_soup.find_all("a", {"href": True}), index_url
+        div_soup.find_all("a", {"href": True}), main_url
     )
 
 
