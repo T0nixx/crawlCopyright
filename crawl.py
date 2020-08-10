@@ -106,14 +106,15 @@ def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[s
     )
 
 
-def get_external_urls_from_category_url(
+def get_external_urls_from_a_soup_and_main_url(
     a_soup: bs4.BeautifulSoup, main_url: str
 ) -> Set[str]:
+    stripped = [a_tag["href"].strip() for a_tag in a_soup.find_all("a", {"href": True})]
     return set(
         [
-            a_tag["href"].strip()
-            for a_tag in a_soup.find_all("a", {"href": True})
-            if main_url not in a_tag["href"].strip() and "http" in a_tag["href"].strip()
+            external_url
+            for external_url in stripped
+            if (main_url not in external_url) and "http" in external_url
         ]
     )
 
