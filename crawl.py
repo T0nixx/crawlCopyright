@@ -90,6 +90,7 @@ def get_category_dictionary_from_soup_and_main_url(
                     for (href, text) in url_text_tuples
                     if (classify_tag(text) == category)
                     and determine_internal_url(href, main_url)
+                    # 그누보드를 쓰는 사이트에서 카테고리 url 을 뽑기 위해 걸러냄
                     and href.find("&wr_id") == -1
                 ],
             )
@@ -252,6 +253,7 @@ def get_result(category_url: str, main_url: str):
     ]
 
     def integrate_urls(url_sets: List[Set[str]]) -> List[str]:
+        # 2차원 배열 1차원으로 flatten 하고 원소별 개수 Counter로 체크
         counter = Counter([url for url_set in url_sets for url in url_set])
         # 여러 페이지에서 중복으로 나오는 url은 광고일 확률이 높으므로 필터
         urls = [url for url, count in counter.items() if count == 1]
