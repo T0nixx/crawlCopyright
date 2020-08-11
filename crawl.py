@@ -37,8 +37,11 @@ def determine_internal_url(url: str, main_url) -> bool:
 
 
 def assemble_url(href_without_http: str) -> str:
-    if href_without_http[0] == ".":
-        return href_without_http[1:]
+    regex = re.compile(".*/")
+
+    if re.match(regex, href_without_http):
+        slash_index = href_without_http.find("/")
+        return href_without_http[slash_index:]
     if href_without_http[0] == "#":
         return "/" + href_without_http
     return href_without_http
