@@ -176,7 +176,7 @@ def get_internal_urls_from_soup_and_main_url(
     )
 
 
-def get_a_soup_from_url(url: str):
+def get_soup_from_url(url: str) -> bs4.BeautifulSoup:
     response = request_with_fake_headers(url)
     return bs4.BeautifulSoup(response.content, "html5lib")
 
@@ -198,21 +198,19 @@ def get_a_soup_of_difference(
 
 def get_result(category_url: str, main_url: str):
     normalized_main_url = noramalize_last_slash_of_url(main_url)
-    category_a_soup = get_a_soup_from_url(category_url)
-    main_a_soup = get_a_soup_from_url(normalized_main_url)
-    a_soup_of_category_diff_main = get_a_soup_of_difference(
-        category_a_soup, main_a_soup
-    )
+    category_soup = get_soup_from_url(category_url)
+    main_soup = get_soup_from_url(normalized_main_url)
+    a_soup_of_category_diff_main = get_a_soup_of_difference(category_soup, main_soup)
 
     next_page_url = get_next_page_url(a_soup_of_category_diff_main, category_url)
 
-    category_soups: List[bs4.BeautifulSoup] = [category_a_soup]
+    category_soups: List[bs4.BeautifulSoup] = [category_soup]
     while next_page_url != None:
         current_page_url = next_page_url
-        current_page_a_soup = get_a_soup_from_url(current_page_url)
+        current_page_soup = get_soup_from_url(current_page_url)
         # main 과 비교해야 페이지가 있는 a tag 가 살아있음
-        current_diff_a_soup = get_a_soup_of_difference(current_page_a_soup, main_a_soup)
-        category_soups.append(current_page_a_soup)
+        current_diff_a_soup = get_a_soup_of_difference(current_page_soup, main_soup)
+        category_soups.append(current_page_soup)
         next_page_url = get_next_page_url(current_diff_a_soup, current_page_url)
 
     diff_soups = (
