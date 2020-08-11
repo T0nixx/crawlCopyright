@@ -61,7 +61,8 @@ def validate_url(url: str) -> bool:
         r"(?:/?|[/?]\S+)$",
         re.IGNORECASE,
     )
-    return re.match(regex, url) is not None
+    # javascript 여기서 걸러도 되는가..
+    return re.match(regex, url) is not None and "javascript" not in url
 
 
 def get_category_dictionary_from_soup_and_main_url(
