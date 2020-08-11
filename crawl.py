@@ -4,6 +4,7 @@ import difflib
 import re
 from typing import Set, List, AnyStr, Union, Optional, Callable, TypeVar
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+from collections import Counter
 
 
 def request_with_fake_headers(url: str):
@@ -15,7 +16,7 @@ def request_with_fake_headers(url: str):
     return requests.get(url, headers=headers)
 
 
-def classify_tag(tag: bs4.Tag) -> str:
+def classify_tag(text: str) -> str:
     category_keywords_dictionary = {
         "webtoon": ["웹툰", "webtoon", "애니", "만화", "툰", "코믹"],
         "sportslive": ["스포츠라이브", "중계", "sportslive"],
@@ -26,17 +27,39 @@ def classify_tag(tag: bs4.Tag) -> str:
     }
 
     for (category, keywords) in category_keywords_dictionary.items():
-        if any(keyword in tag.text for keyword in keywords):
+        if any(keyword in text for keyword in keywords):
             return category
     return "else"
 
 
-# TODO: 조정 필요함 사이트마다 다른 부분이라 어쩔 수 없나 싶기도 한데
-def gnu_board_url_trim(url: str) -> str:
-    return url.find("&wr_id") == -1 and url or url[: url.find("&wr_id")]
+def determine_internal_url(url: str, main_url) -> bool:
+    return main_url in url or "http" not in url
 
 
-def get_category_dictionary_from_a_tags(a_tags: List[bs4.Tag], main_url: str):
+def assemble_url(href_without_http: str) -> str:
+    if href_without_http[0] == ".":
+        return href_without_http[1:]
+    if href_without_http[0] == "#":
+        return "/" + href_without_http
+    return href_without_http
+
+
+def validate_url(url: str) -> bool:
+    regex = re.compile(
+        r"^(?:http|ftp)s?://"  # http:// or https://
+        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
+        r"localhost|"  # localhost...
+        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+        r"(?::\d+)?"  # optional port
+        r"(?:/?|[/?]\S+)$",
+        re.IGNORECASE,
+    )
+    return re.match(regex, url) is not None
+
+
+def get_category_dictionary_from_soup_and_main_url(
+    soup: bs4.BeautifulSoup, main_url: str
+):
     categories = [
         "webtoon",
         "sportslive",
@@ -45,14 +68,23 @@ def get_category_dictionary_from_a_tags(a_tags: List[bs4.Tag], main_url: str):
         "streaming",
         "link",
     ]
+
+    a_tags = soup.find_all("a", {"href": True})
+    url_text_tuples = [(a_tag["href"].strip(), a_tag.text) for a_tag in a_tags]
+
     return {
+        # TODO: 누더기...
         category: set(
-            [
-                gnu_board_url_trim(a_tag["href"].strip())
-                for a_tag in a_tags
-                if (classify_tag(a_tag) == category)
-                and (main_url in a_tag["href"].strip())
-            ]
+            filter(
+                validate_url,
+                [
+                    "http" in href and href or main_url + assemble_url(href)
+                    for (href, text) in url_text_tuples
+                    if (classify_tag(text) == category)
+                    and determine_internal_url(href, main_url)
+                    and href.find("&wr_id") == -1
+                ],
+            )
         )
         for category in categories
     }
@@ -65,9 +97,7 @@ def get_category_dictionary_from_main_page(main_url: str):
         "\n".join([str(div_tag) for div_tag in soup.find_all("div", limit=5)]),
         "html5lib",
     )
-    return get_category_dictionary_from_a_tags(
-        div_soup.find_all("a", {"href": True}), main_url
-    )
+    return get_category_dictionary_from_soup_and_main_url(div_soup, main_url)
 
 
 def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[str]:
@@ -106,32 +136,31 @@ def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[s
     )
 
 
-def get_external_urls_from_a_soup_and_main_url(
-    a_soup: bs4.BeautifulSoup, main_url: str
+def get_external_urls_from_soup_and_main_url(
+    soup: bs4.BeautifulSoup, main_url: str
 ) -> Set[str]:
-    stripped = [a_tag["href"].strip() for a_tag in a_soup.find_all("a", {"href": True})]
+    stripped = [a_tag["href"].strip() for a_tag in soup.find_all("a", {"href": True})]
     return set(
         [
             external_url
             for external_url in stripped
-            if (main_url not in external_url) and "http" in external_url
+            if determine_internal_url(external_url, main_url) == False
         ]
     )
 
 
-def get_internal_urls_from_a_soup_and_main_url(
-    a_soup: bs4.BeautifulSoup, main_url: str
+def get_internal_urls_from_soup_and_main_url(
+    soup: bs4.BeautifulSoup, main_url: str
 ) -> Set[str]:
-    stripped = [a_tag["href"].strip() for a_tag in a_soup.find_all("a", {"href": True})]
-    internal_urls_set = set(stripped).difference(
-        get_external_urls_from_a_soup_and_main_url(a_soup, main_url)
-    )
+    stripped = [a_tag["href"].strip() for a_tag in soup.find_all("a", {"href": True})]
+
     return set(
         [
-            # http 로 시작하지 않고 /board #~ 이런 식의 url 처리 좀 더 지켜봐야함
-            "http" in internal_url and internal_url or main_url + internal_url
-            for internal_url in internal_urls_set
-            # if parse_qsl(internal_url)
+            "http" in internal_url
+            and internal_url
+            or main_url + assemble_url(internal_url)
+            for internal_url in stripped
+            if determine_internal_url(internal_url, main_url) == True
         ]
     )
 
@@ -164,7 +193,6 @@ def get_result(category_url: str, main_url: str):
     )
 
     next_page_url = get_next_page_url(a_soup_of_category_diff_main, category_url)
-    next_page_url != None
 
     category_soups: List[bs4.BeautifulSoup] = [category_a_soup]
     while next_page_url != None:
@@ -183,18 +211,34 @@ def get_result(category_url: str, main_url: str):
             for index, _ in enumerate(category_soups)
         ]
         or [a_soup_of_category_diff_main]
-            )
+    )
 
-    return [
-        {
-            "external": get_external_urls_from_a_soup_and_main_url(diff_soup, main_url),
-            "internal": set(
-                # category_url로 필터하면 main_url에 붙여서 만든 internal_url 들이 걸러질 것
-                filter(
-                    lambda url: category_url in url,
-                    get_internal_urls_from_a_soup_and_main_url(diff_soup, main_url),
-                )
-            ),
-        }
+    # 한 페이지 별로 Set을 만들어서 광고등으로 여러번 나온 url을 하나만 나오도록 함
+    external_urls: List[Set[str]] = [
+        get_external_urls_from_soup_and_main_url(diff_soup, main_url)
         for diff_soup in diff_soups
-]
+    ]
+
+    internal_urls: List[Set[str]] = [
+        set(
+            filter(
+                # category_url로 필터하면 main_url에 붙여서 만든 internal_url 들이 걸러질 것
+                lambda url: category_url in url and validate_url(url),
+                get_internal_urls_from_soup_and_main_url(diff_soup, main_url),
+            )
+        )
+        for diff_soup in diff_soups
+    ]
+
+    def integrate_urls(url_sets: List[Set[str]]) -> List[str]:
+        counter = Counter([url for url_set in url_sets for url in url_set])
+        # 여러 페이지에서 중복으로 나오는 url은 광고일 확률이 높으므로 필터
+        urls = [url for url, count in counter.items() if count == 1]
+
+        return urls
+
+    return {
+        "external": integrate_urls(external_urls),
+        "internal": integrate_urls(internal_urls),
+    }
+
