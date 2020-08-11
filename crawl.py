@@ -230,11 +230,19 @@ def get_result(category_url: str, main_url: str):
         for diff_soup in diff_soups
     ]
 
+    def determine_internal_specific_url(url: str, category_url: str) -> bool:
+        return (
+            category_url in url
+            and validate_url(url)
+            # 그누보드 쓰는 페이지들에서 bo_table만 있고 wr_id는 없는(정렬, 다음 페이지등) url 필터
+            and (("bo_table" in url and "wr_id" not in url) == False)
+        )
+
     internal_urls: List[Set[str]] = [
         set(
             filter(
                 # category_url로 필터하면 main_url에 붙여서 만든 internal_url 들이 걸러질 것
-                lambda url: category_url in url and validate_url(url),
+                lambda url: determine_internal_specific_url(url, category_url),
                 get_internal_urls_from_soup_and_main_url(
                     diff_soup, normalized_main_url
                 ),
