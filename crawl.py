@@ -47,6 +47,10 @@ def assemble_url(href_without_http: str) -> str:
     return href_without_http
 
 
+def noramalize_last_slash_of_url(url: str) -> str:
+    return url[-1] == "/" and url[:-1] or url
+
+
 def validate_url(url: str) -> bool:
     regex = re.compile(
         r"^(?:http|ftp)s?://"  # http:// or https://
@@ -100,7 +104,9 @@ def get_category_dictionary_from_main_page(main_url: str):
         "\n".join([str(div_tag) for div_tag in soup.find_all("div", limit=5)]),
         "html5lib",
     )
-    return get_category_dictionary_from_soup_and_main_url(div_soup, main_url)
+    return get_category_dictionary_from_soup_and_main_url(
+        div_soup, noramalize_last_slash_of_url(main_url)
+    )
 
 
 def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[str]:
@@ -189,8 +195,9 @@ def get_a_soup_of_difference(
 
 
 def get_result(category_url: str, main_url: str):
+    normalized_main_url = noramalize_last_slash_of_url(main_url)
     category_a_soup = get_a_soup_from_url(category_url)
-    main_a_soup = get_a_soup_from_url(main_url)
+    main_a_soup = get_a_soup_from_url(normalized_main_url)
     a_soup_of_category_diff_main = get_a_soup_of_difference(
         category_a_soup, main_a_soup
     )
@@ -218,7 +225,7 @@ def get_result(category_url: str, main_url: str):
 
     # 한 페이지 별로 Set을 만들어서 광고등으로 여러번 나온 url을 하나만 나오도록 함
     external_urls: List[Set[str]] = [
-        get_external_urls_from_soup_and_main_url(diff_soup, main_url)
+        get_external_urls_from_soup_and_main_url(diff_soup, normalized_main_url)
         for diff_soup in diff_soups
     ]
 
@@ -227,7 +234,9 @@ def get_result(category_url: str, main_url: str):
             filter(
                 # category_url로 필터하면 main_url에 붙여서 만든 internal_url 들이 걸러질 것
                 lambda url: category_url in url and validate_url(url),
-                get_internal_urls_from_soup_and_main_url(diff_soup, main_url),
+                get_internal_urls_from_soup_and_main_url(
+                    diff_soup, normalized_main_url
+                ),
             )
         )
         for diff_soup in diff_soups
