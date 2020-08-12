@@ -2,7 +2,7 @@ import requests
 import bs4
 import difflib
 import re
-from typing import Set, List, AnyStr, Union, Optional, Callable, TypeVar
+from typing import Set, List, Optional
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from collections import Counter
 
@@ -47,7 +47,7 @@ def assemble_url(href_without_http: str) -> str:
     return href_without_http
 
 
-def noramalize_last_slash_of_url(url: str) -> str:
+def noramalize_url(url: str) -> str:
     return url[-1] == "/" and url[:-1] or url
 
 
@@ -65,9 +65,13 @@ def validate_url(url: str) -> bool:
     return re.match(regex, url) is not None and "javascript" not in url
 
 
-def get_category_dictionary_from_soup_and_main_url(
-    soup: bs4.BeautifulSoup, main_url: str
-):
+def get_category_dictionary_from_main_page(main_url: str):
+    soup = get_soup(main_url)
+    # TODO: 필요한 지 생각해봐야함
+    div_soup = bs4.BeautifulSoup(
+        "\n".join([str(div_tag) for div_tag in soup.find_all("div", limit=5)]),
+        "html5lib",
+    )
     categories = [
         "webtoon",
         "sportslive",
@@ -77,7 +81,7 @@ def get_category_dictionary_from_soup_and_main_url(
         "link",
     ]
 
-    a_tags = soup.find_all("a", {"href": True})
+    a_tags = div_soup.find_all("a", {"href": True})
     url_text_tuples = [(a_tag["href"].strip(), a_tag.text) for a_tag in a_tags]
 
     return {
@@ -97,18 +101,6 @@ def get_category_dictionary_from_soup_and_main_url(
         )
         for category in categories
     }
-
-
-def get_category_dictionary_from_main_page(main_url: str):
-    response = request_with_fake_headers(main_url)
-    soup = bs4.BeautifulSoup(response.content, "html5lib")
-    div_soup = bs4.BeautifulSoup(
-        "\n".join([str(div_tag) for div_tag in soup.find_all("div", limit=5)]),
-        "html5lib",
-    )
-    return get_category_dictionary_from_soup_and_main_url(
-        div_soup, noramalize_last_slash_of_url(main_url)
-    )
 
 
 def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[str]:
@@ -147,9 +139,7 @@ def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[s
     )
 
 
-def get_external_urls_from_soup_and_main_url(
-    soup: bs4.BeautifulSoup, main_url: str
-) -> Set[str]:
+def get_external_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
     stripped = [a_tag["href"].strip() for a_tag in soup.find_all("a", {"href": True})]
     return set(
         [
@@ -160,9 +150,7 @@ def get_external_urls_from_soup_and_main_url(
     )
 
 
-def get_internal_urls_from_soup_and_main_url(
-    soup: bs4.BeautifulSoup, main_url: str
-) -> Set[str]:
+def get_internal_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
     stripped = [a_tag["href"].strip() for a_tag in soup.find_all("a", {"href": True})]
 
     return set(
@@ -176,7 +164,7 @@ def get_internal_urls_from_soup_and_main_url(
     )
 
 
-def get_soup_from_url(url: str) -> bs4.BeautifulSoup:
+def get_soup(url: str) -> bs4.BeautifulSoup:
     response = request_with_fake_headers(url)
     return bs4.BeautifulSoup(response.content, "html5lib")
 
@@ -185,21 +173,21 @@ def get_soup_from_url(url: str) -> bs4.BeautifulSoup:
 def get_a_soup_of_difference(
     a_soup: bs4.BeautifulSoup, b_soup: bs4.BeautifulSoup
 ) -> bs4.BeautifulSoup:
-    # TODO: 정규 표현식 더 상세하게 수정 필요
-    pattern = re.compile("<a.*>")
     # diff 성능이 좋지 않은 사이트들이 있음
     diff = difflib.unified_diff(
         a_soup.prettify().splitlines(), b_soup.prettify().splitlines()
     )
+    # TODO: 정규 표현식 더 상세하게 수정 필요
+    pattern = re.compile("<a.*>")
 
     a_tags_of_diff = pattern.findall("\n".join(filter(lambda x: x[0] == "-", diff)))
     return bs4.BeautifulSoup("\n".join(a_tags_of_diff), "html5lib")
 
 
-def get_result(category_url: str, main_url: str):
-    normalized_main_url = noramalize_last_slash_of_url(main_url)
-    category_soup = get_soup_from_url(category_url)
-    main_soup = get_soup_from_url(normalized_main_url)
+def get_external_internal_urls(category_url: str, main_url: str):
+    normalized_main_url = noramalize_url(main_url)
+    category_soup = get_soup(category_url)
+    main_soup = get_soup(normalized_main_url)
     a_soup_of_category_diff_main = get_a_soup_of_difference(category_soup, main_soup)
 
     next_page_url = get_next_page_url(a_soup_of_category_diff_main, category_url)
@@ -207,7 +195,7 @@ def get_result(category_url: str, main_url: str):
     category_soups: List[bs4.BeautifulSoup] = [category_soup]
     while next_page_url != None:
         current_page_url = next_page_url
-        current_page_soup = get_soup_from_url(current_page_url)
+        current_page_soup = get_soup(current_page_url)
         # main 과 비교해야 페이지가 있는 a tag 가 살아있음
         current_diff_a_soup = get_a_soup_of_difference(current_page_soup, main_soup)
         category_soups.append(current_page_soup)
@@ -225,8 +213,7 @@ def get_result(category_url: str, main_url: str):
 
     # 한 페이지 별로 Set을 만들어서 광고등으로 여러번 나온 url을 하나만 나오도록 함
     external_urls: List[Set[str]] = [
-        get_external_urls_from_soup_and_main_url(diff_soup, normalized_main_url)
-        for diff_soup in diff_soups
+        get_external_url_set(diff_soup, normalized_main_url) for diff_soup in diff_soups
     ]
 
     def determine_internal_specific_url(url: str, category_url: str) -> bool:
@@ -242,9 +229,7 @@ def get_result(category_url: str, main_url: str):
             filter(
                 # category_url로 필터하면 main_url에 붙여서 만든 internal_url 들이 걸러질 것
                 lambda url: determine_internal_specific_url(url, category_url),
-                get_internal_urls_from_soup_and_main_url(
-                    diff_soup, normalized_main_url
-                ),
+                get_internal_url_set(diff_soup, normalized_main_url),
             )
         )
         for diff_soup in diff_soups
