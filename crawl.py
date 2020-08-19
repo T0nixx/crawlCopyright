@@ -65,7 +65,7 @@ def validate_url(url: str) -> bool:
     return re.match(regex, url) is not None and "javascript" not in url
 
 
-def get_category_dictionary_from_main_page(main_url: str):
+def get_category_dictionary(main_url: str):
     soup = get_soup(main_url)
     # TODO: 필요한 지 생각해봐야함
     div_soup = bs4.BeautifulSoup(
