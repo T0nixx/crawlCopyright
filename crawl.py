@@ -66,7 +66,8 @@ def validate_url(url: str) -> bool:
 
 
 def get_category_dictionary(main_url: str):
-    soup = get_soup(main_url)
+    response = request_with_fake_headers(main_url)
+    soup = bs4.BeautifulSoup(response.content, "html5lib")
     # TODO: 필요한 지 생각해봐야함
     div_soup = bs4.BeautifulSoup(
         "\n".join([str(div_tag) for div_tag in soup.find_all("div", limit=5)]),
@@ -164,11 +165,6 @@ def get_internal_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
     )
 
 
-def get_soup(url: str) -> bs4.BeautifulSoup:
-    response = request_with_fake_headers(url)
-    return bs4.BeautifulSoup(response.content, "html5lib")
-
-
 # 더 나은 이름이 있을 것 같은데 생각이 안남 ㅎㅎ;
 def get_a_soup_of_difference(
     a_soup: bs4.BeautifulSoup, b_soup: bs4.BeautifulSoup
@@ -185,9 +181,13 @@ def get_a_soup_of_difference(
 
 
 def get_external_internal_urls(category_url: str, main_url: str):
+    category_response = request_with_fake_headers(category_url)
+    category_soup = bs4.BeautifulSoup(category_response.content, "html5lib")
+
     normalized_main_url = noramalize_url(main_url)
-    category_soup = get_soup(category_url)
-    main_soup = get_soup(normalized_main_url)
+    main_response = request_with_fake_headers(normalized_main_url)
+    main_soup = bs4.BeautifulSoup(main_response.content, "html5lib")
+
     a_soup_of_category_diff_main = get_a_soup_of_difference(category_soup, main_soup)
 
     next_page_url = get_next_page_url(a_soup_of_category_diff_main, category_url)
@@ -195,7 +195,8 @@ def get_external_internal_urls(category_url: str, main_url: str):
     category_soups: List[bs4.BeautifulSoup] = [category_soup]
     while next_page_url != None:
         current_page_url = next_page_url
-        current_page_soup = get_soup(current_page_url)
+        current_page_response = request_with_fake_headers(current_page_url)
+        current_page_soup = bs4.BeautifulSoup(current_page_response.content, "html5lib")
         # main 과 비교해야 페이지가 있는 a tag 가 살아있음
         current_diff_a_soup = get_a_soup_of_difference(current_page_soup, main_soup)
         category_soups.append(current_page_soup)
