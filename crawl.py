@@ -48,7 +48,7 @@ def assemble_url(href_without_http: str) -> str:
 
 
 def noramalize_url(url: str) -> str:
-    return url[-1] == "/" and url[:-1] or url
+    return url[:-1] if url[-1] == "/" else url
 
 
 def validate_url(url: str) -> bool:
@@ -91,7 +91,7 @@ def get_category_dictionary(main_url: str):
             filter(
                 validate_url,
                 [
-                    "http" in href and href or main_url + assemble_url(href)
+                    href if "http" in href else main_url + assemble_url(href)
                     for (href, text) in url_text_tuples
                     if (classify_tag(text) == category)
                     and determine_internal_url(href, main_url)
@@ -111,7 +111,7 @@ def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[s
 
     # page가 쿼리에 있으면 그걸 사용하고 없으면 1로 가정
     current_page = (
-        "page" in parsed_query and int(parsed_query_string_dictionary["page"]) or 1
+        int(parsed_query_string_dictionary["page"]) if "page" in parsed_query else 1
     )
     next_page_in_string = str(current_page + 1)
     next_parsed_query_string_dictionary = {
@@ -121,22 +121,22 @@ def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[s
 
     next_page_parsed = [
         # attribute 중 query만 page를 다음 페이지로 바꿔줌 https://docs.python.org/ko/3/library/urllib.parse.html 표 참조
-        index == 4 and urlencode(next_parsed_query_string_dictionary) or attirbute
+        urlencode(next_parsed_query_string_dictionary) if index == 4 else attirbute
         for index, attirbute in enumerate(parse_result)
     ]
     next_page_url = urlunparse(next_page_parsed)
 
     # 다음 페이지 호출하는 url이 html에 존재할 때만 반환
     return (
-        any(
+        next_page_url
+        if any(
             [
                 a_tag["href"].strip()
                 for a_tag in a_soup.find_all("a", {"href": True})
                 if "page=" + next_page_in_string in a_tag["href"].strip()
             ]
         )
-        and next_page_url
-        or None
+        else None
     )
 
 

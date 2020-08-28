@@ -86,7 +86,7 @@ def rename_css_files(directory):
 
 
 def map_to_row(url: str):
-    url_with_scheme = "//" not in url and "http://" + url or url
+    url_with_scheme = "https://" + url if "//" not in url else url
     response = request_with_fake_headers(url_with_scheme)
     soup = bs4.BeautifulSoup(response.content, "html5lib")
 
@@ -147,7 +147,7 @@ def map_to_row(url: str):
 
     def get_first_or_none(target: List[str]) -> Optional[str]:
         print(target)
-        return len(target) != 0 and target[0] or None
+        return None if len(target) == 0 else target[0]
 
     return {
         "main_url": trimmed_url,
@@ -163,9 +163,8 @@ def map_to_row(url: str):
     }
 
 
-def insert_row(row: Dict[str, str], connection: sqlite3.Connection):
+def insert_row(row: Dict[str, Optional[str]], connection: sqlite3.Connection):
     cursor = connection.cursor()
-    # OR REPLACE
     sql = f"""
         INSERT OR REPLACE INTO illegal_leaves VALUES (
             ?,
