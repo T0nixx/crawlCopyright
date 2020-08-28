@@ -201,6 +201,7 @@ def insert_row(row: Dict[str, Optional[str]], connection: sqlite3.Connection):
 
 if __name__ == "__main__":
     connection = initailize_leaves_database()
-    row = map_to_row("nabitoon2.link/웹툰")
-    insert_row(row, connection).close()
+    with connection:
+        row = map_to_row("http://podo10.com")
+        insert_row(row, connection)
 
