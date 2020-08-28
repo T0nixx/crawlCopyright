@@ -1,4 +1,3 @@
-from os import rename
 import sqlite3
 import subprocess
 from pathlib import Path
