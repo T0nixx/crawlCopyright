@@ -32,7 +32,7 @@ def classify_tag(text: str) -> str:
     return "else"
 
 
-def determine_internal_url(url: str, main_url) -> bool:
+def is_internal_url(url: str, main_url) -> bool:
     return main_url in url or "http" not in url
 
 
@@ -62,7 +62,7 @@ def validate_url(url: str) -> bool:
         re.IGNORECASE,
     )
     # javascript 여기서 걸러도 되는가..
-    return re.match(regex, url) is not None and "javascript" not in url
+    return (re.match(regex, url) != None) and ("javascript" not in url)
 
 
 def get_category_dictionary(main_url: str):
@@ -94,7 +94,7 @@ def get_category_dictionary(main_url: str):
                     href if "http" in href else main_url + assemble_url(href)
                     for (href, text) in url_text_tuples
                     if (classify_tag(text) == category)
-                    and determine_internal_url(href, main_url)
+                    and is_internal_url(href, main_url)
                     # 그누보드를 쓰는 사이트에서 카테고리 url 을 뽑기 위해 걸러냄
                     and href.find("&wr_id") == -1
                 ],
@@ -146,7 +146,7 @@ def get_external_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
         [
             external_url
             for external_url in stripped
-            if determine_internal_url(external_url, main_url) == False
+            if is_internal_url(external_url, main_url) == False
         ]
     )
 
@@ -160,7 +160,7 @@ def get_internal_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
             and internal_url
             or main_url + assemble_url(internal_url)
             for internal_url in stripped
-            if determine_internal_url(internal_url, main_url) == True
+            if is_internal_url(internal_url, main_url) == True
         ]
     )
 
@@ -217,7 +217,7 @@ def get_external_internal_urls(category_url: str, main_url: str):
         get_external_url_set(diff_soup, normalized_main_url) for diff_soup in diff_soups
     ]
 
-    def determine_internal_specific_url(url: str, category_url: str) -> bool:
+    def is_internal_specific_url(url: str, category_url: str) -> bool:
         return (
             category_url in url
             and validate_url(url)
@@ -229,7 +229,7 @@ def get_external_internal_urls(category_url: str, main_url: str):
         set(
             filter(
                 # category_url로 필터하면 main_url에 붙여서 만든 internal_url 들이 걸러질 것
-                lambda url: determine_internal_specific_url(url, category_url),
+                lambda url: is_internal_specific_url(url, category_url),
                 get_internal_url_set(diff_soup, normalized_main_url),
             )
         )
