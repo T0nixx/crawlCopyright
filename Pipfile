@@ -12,6 +12,9 @@ rope = "*"
 requests = "*"
 beautifulsoup4 = "*"
 html5lib = "*"
+python-twitter = "*"
+click = "*"
+html-similarity = "*"
 
 [requires]
 python_version = "3.7"

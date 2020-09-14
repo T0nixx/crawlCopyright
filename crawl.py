@@ -1,3 +1,5 @@
+from determine_engine import is_xe_based_soup
+from db_library import insert_row
 import requests
 import bs4
 import difflib
@@ -5,15 +7,17 @@ import re
 from typing import Set, List, Optional
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from collections import Counter
-
-
-def request_with_fake_headers(url: str):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36",
-        "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
-        "referer": "https://www.google.com",
-    }
-    return requests.get(url, headers=headers)
+from url_library import (
+    is_internal_url,
+    assemble_url,
+    validate_url,
+    trim_url,
+    normalize_url,
+    is_internal_specific_url,
+    remove_page_query,
+)
+import click
+from request_with_fake_headers import request_with_fake_headers
 
 
 def classify_tag(text: str) -> str:
@@ -23,46 +27,13 @@ def classify_tag(text: str) -> str:
         "torrent": ["토렌트", "torrent", "토렌토", "토렌", "토랜"],
         "streaming": ["다시보기", "영화", "드라마", "TV", "티비"],
         "adult": ["성인", "야동", "19영상", "서양", "동양"],
-        "link": ["링크", "주소", "link"],
+        "link": ["링크모음", "주소모음"],
     }
 
     for (category, keywords) in category_keywords_dictionary.items():
         if any(keyword in text for keyword in keywords):
             return category
     return "else"
-
-
-def is_internal_url(url: str, main_url) -> bool:
-    return main_url in url or "http" not in url
-
-
-def assemble_url(href_without_http: str) -> str:
-    regex = re.compile(".*/")
-
-    if re.match(regex, href_without_http):
-        slash_index = href_without_http.find("/")
-        return href_without_http[slash_index:]
-    if href_without_http[0] == "#":
-        return "/" + href_without_http
-    return href_without_http
-
-
-def noramalize_url(url: str) -> str:
-    return url[:-1] if url[-1] == "/" else url
-
-
-def validate_url(url: str) -> bool:
-    regex = re.compile(
-        r"^(?:http|ftp)s?://"  # http:// or https://
-        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
-        r"localhost|"  # localhost...
-        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-        r"(?::\d+)?"  # optional port
-        r"(?:/?|[/?]\S+)$",
-        re.IGNORECASE,
-    )
-    # javascript 여기서 걸러도 되는가..
-    return (re.match(regex, url) != None) and ("javascript" not in url)
 
 
 def get_category_dictionary(main_url: str):
@@ -79,7 +50,7 @@ def get_category_dictionary(main_url: str):
         "adult",
         "torrent",
         "streaming",
-        "link",
+        # "link",
     ]
 
     a_tags = div_soup.find_all("a", {"href": True})
@@ -91,12 +62,22 @@ def get_category_dictionary(main_url: str):
             filter(
                 validate_url,
                 [
-                    href if "http" in href else main_url + assemble_url(href)
+                    href
+                    if "http" in href
+                    else normalize_url(main_url) + assemble_url(href)
                     for (href, text) in url_text_tuples
                     if (classify_tag(text) == category)
                     and is_internal_url(href, main_url)
                     # 그누보드를 쓰는 사이트에서 카테고리 url 을 뽑기 위해 걸러냄
                     and href.find("&wr_id") == -1
+                    and href.find("document_srl") == -1
+                    and not (
+                        # XE 쓰는 사이트에서 index 숨겼을 때 게시판 까지만 참조하도록함
+                        is_xe_based_soup(soup)
+                        and len(urlparse(href).path.split("/")) > 2
+                    )
+                    and href != main_url
+                    and "#" not in href
                 ],
             )
         )
@@ -152,7 +133,11 @@ def get_external_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
 
 
 def get_internal_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
-    stripped = [a_tag["href"].strip() for a_tag in soup.find_all("a", {"href": True})]
+    stripped = [
+        a_tag["href"].strip()
+        for a_tag in soup.find_all("a", {"href": True})
+        if len(a_tag["href"]) > 0
+    ]
 
     return set(
         [
@@ -165,7 +150,6 @@ def get_internal_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
     )
 
 
-# 더 나은 이름이 있을 것 같은데 생각이 안남 ㅎㅎ;
 def get_a_soup_of_difference(
     a_soup: bs4.BeautifulSoup, b_soup: bs4.BeautifulSoup
 ) -> bs4.BeautifulSoup:
@@ -184,16 +168,16 @@ def get_external_internal_urls(category_url: str, main_url: str):
     category_response = request_with_fake_headers(category_url)
     category_soup = bs4.BeautifulSoup(category_response.content, "html5lib")
 
-    normalized_main_url = noramalize_url(main_url)
+    normalized_main_url = normalize_url(main_url)
     main_response = request_with_fake_headers(normalized_main_url)
     main_soup = bs4.BeautifulSoup(main_response.content, "html5lib")
 
     a_soup_of_category_diff_main = get_a_soup_of_difference(category_soup, main_soup)
 
     next_page_url = get_next_page_url(a_soup_of_category_diff_main, category_url)
-
+    limit = 0
     category_soups: List[bs4.BeautifulSoup] = [category_soup]
-    while next_page_url != None:
+    while next_page_url is not None and limit < 5:
         current_page_url = next_page_url
         current_page_response = request_with_fake_headers(current_page_url)
         current_page_soup = bs4.BeautifulSoup(current_page_response.content, "html5lib")
@@ -201,6 +185,7 @@ def get_external_internal_urls(category_url: str, main_url: str):
         current_diff_a_soup = get_a_soup_of_difference(current_page_soup, main_soup)
         category_soups.append(current_page_soup)
         next_page_url = get_next_page_url(current_diff_a_soup, current_page_url)
+        limit += 1
 
     diff_soups = (
         len(category_soups) > 1
@@ -216,14 +201,6 @@ def get_external_internal_urls(category_url: str, main_url: str):
     external_urls: List[Set[str]] = [
         get_external_url_set(diff_soup, normalized_main_url) for diff_soup in diff_soups
     ]
-
-    def is_internal_specific_url(url: str, category_url: str) -> bool:
-        return (
-            category_url in url
-            and validate_url(url)
-            # 그누보드 쓰는 페이지들에서 bo_table만 있고 wr_id는 없는(정렬, 다음 페이지등) url 필터
-            and (("bo_table" in url and "wr_id" not in url) == False)
-        )
 
     internal_urls: List[Set[str]] = [
         set(
@@ -249,3 +226,116 @@ def get_external_internal_urls(category_url: str, main_url: str):
         "internal": integrate_urls(internal_urls),
     }
 
+
+def crawl_from_internals(urls: List[str], main_url: str) -> List[str]:
+    urls_without_page = [remove_page_query(url) for url in urls]
+    # print(urls_without_page)
+    soups = []
+
+    for url in urls_without_page:
+        try:
+            soup = bs4.BeautifulSoup(request_with_fake_headers(url).content, "html5lib")
+        except:
+            pass
+        else:
+            soups.append(soup)
+    diff_soups = [
+        # 다음 페이지가 있으면 여기서 자기들 끼리 비교해서 page 관련 태그를 없애고자 함
+        get_a_soup_of_difference(soups[index], soups[index - 1])
+        for index, _ in enumerate(soups)
+    ]
+
+    internals = [
+        diff_soup.find("a", {"href": re.compile(r"&no=")}) for diff_soup in diff_soups
+    ]
+
+    filtered_internals = [
+        internal["href"] for internal in internals if internal is not None
+    ]
+
+    final_internals = []
+    for filtered_url in filtered_internals:
+        try:
+            result = requests.get(filtered_url, headers={"referer": filtered_url}).url
+        except:
+            pass
+        else:
+            final_internals.append(result)
+
+    if len(final_internals) > 0:
+        return final_internals
+
+    externals = [
+        [
+            a_tag["href"]
+            for a_tag in diff_soup.find_all("a", {"href": True})
+            if is_internal_url(a_tag["href"], main_url) == False
+        ]
+        for diff_soup in diff_soups
+    ]
+
+    final_externals = [external[0] for external in externals if len(external) > 0]
+    return final_externals
+
+
+@click.command()
+@click.argument("url")
+def crawl_link_collection_site(url):
+    """Crawl site which collects illegal site urls"""
+    if validate_url(url) == False:
+        print("INVALID URL")
+        return 0
+    category_dictionary = get_category_dictionary(url)
+    # print(category_dictionary)
+    url_dict = dict()
+    for category, category_urls in category_dictionary.items():
+        for category_url in category_urls:
+            result = get_external_internal_urls(category_url, url)
+            url_dict[category] = list(
+                set(
+                    result["external"]
+                    if len(result["external"]) > 0
+                    else crawl_from_internals(result["internal"], url)
+                )
+            )
+
+    for category, urls in url_dict.items():
+        for url_from_dict in urls:
+            insert_row(
+                {
+                    "main_url": trim_url(url_from_dict),
+                    "expected_category": category,
+                    "main_html_path": None,
+                    "captured_url": None,
+                    "captured_file_path": None,
+                    "google_analytics_code": None,
+                    "telegram_url": None,
+                    "twitter_url": None,
+                    "similarity_group": None,
+                    "engine": None,
+                    "next_url": None,
+                }
+            )
+
+    insert_row(
+        {
+            "main_url": trim_url(url),
+            "expected_category": "link",
+            "main_html_path": None,
+            "captured_url": None,
+            "captured_file_path": None,
+            "google_analytics_code": None,
+            "telegram_url": None,
+            "twitter_url": None,
+            "similarity_group": None,
+            "engine": None,
+            "next_url": None,
+        }
+    )
+
+    return url_dict
+
+
+if __name__ == "__main__":
+    # pylint: disable=no-value-for-parameter
+    crawl_link_collection_site()

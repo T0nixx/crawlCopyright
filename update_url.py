@@ -1,66 +1,20 @@
-import sqlite3
+from db_library import update_row
+from determine_engine import determine_engine
 import subprocess
 from pathlib import Path
 import os
-from urllib.parse import urlparse
 import bs4
 import re
-from crawl import request_with_fake_headers
-from typing import List, Dict, Optional
+from typing import List, Optional
 from shutil import rmtree
-
-
-def initailize_leaves_database():
-    with sqlite3.connect("illegals.db") as db_connection:
-        cursor = db_connection.cursor()
-
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS illegal_leaves(
-                main_url TEXT PRIMARY KEY,
-                main_html_path TEXT,
-                captured_url TEXT,
-                captured_file_path TEXT,
-                google_analytics_code TEXT,
-                telegram_url TEXT,
-                twitter_url TEXT,
-                similarity_group TEXT,
-                engine TEXT,
-                next_url TEXT
-            )
-        """
-        )
-        db_connection.commit()
-        return db_connection
-
-
-def is_telegram_url(url: str):
-    if "telegram.me" not in url and "t.me/" not in url:
-        return False
-    return True
-
-
-def is_twitter_url(url: str):
-    if "twitter.com" not in url and "t.co/" not in url:
-        return False
-    return True
-
-
-def is_main_url(url: str):
-    if urlparse(url).path == "":
-        return True
-    return False
-
-
-def trim_url(url: str) -> str:
-    stripped = url.strip()
-    url_with_https = re.search(r"https://.*", stripped)
-    url_with_http = re.search(r"http://.*", stripped)
-    if url_with_https != None:
-        return url_with_https.group(0)[8:]
-    if url_with_http != None:
-        return url_with_http.group(0)[7:]
-    return stripped
+from url_library import (
+    trim_url,
+    is_telegram_url,
+    is_twitter_url,
+    is_main_url,
+)
+from request_with_fake_headers import request_with_fake_headers
+import click
 
 
 def revise_html(path: Path):
@@ -108,7 +62,6 @@ def map_to_row(url: str):
 
     google_analytics_pattern = re.compile(r"UA-[0-9]{9}-[0-9]+")
 
-    # [script_tag["src"] for script_tag in ]
     google_analytics_codes = google_analytics_pattern.findall(
         " ".join(
             [str(script_tag) for script_tag in soup.find_all("script", {"src": True})]
@@ -135,8 +88,9 @@ def map_to_row(url: str):
             trimmed_url,
         ]
     )
-    if wget_result.returncode != 0:
-        print(wget_result)
+    # wget 실패하는 경우에 대한 처리 필요
+    # if wget_result.returncode != 0:
+    #     print(wget_result)
     index_html_path = html_dir / "index.html"
     revise_html(index_html_path)
 
@@ -146,7 +100,6 @@ def map_to_row(url: str):
     os.chdir("../..")
 
     def get_first_or_none(target: List[str]) -> Optional[str]:
-        print(target)
         return None if len(target) == 0 else target[0]
 
     return {
@@ -158,50 +111,19 @@ def map_to_row(url: str):
         "telegram_url": get_first_or_none(telegram_urls),
         "twitter_url": get_first_or_none(twitter_urls),
         "similarity_group": None,
-        "engine": None,
+        "engine": determine_engine(soup),
         "next_url": None,
+        "expected_category": None,
     }
 
 
-def insert_row(row: Dict[str, Optional[str]], connection: sqlite3.Connection):
-    cursor = connection.cursor()
-    sql = f"""
-        INSERT OR REPLACE INTO illegal_leaves VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-        )
-    """
-    cursor.execute(
-        sql,
-        (
-            row["main_url"],
-            row["main_html_path"],
-            row["captured_url"],
-            row["captured_file_path"],
-            row["google_analytics_code"],
-            row["telegram_url"],
-            row["twitter_url"],
-            row["similarity_group"],
-            row["engine"],
-            row["next_url"],
-        ),
-    )
-
-    connection.commit()
-    return connection
+@click.command()
+@click.argument("url")
+def update_url(url: str):
+    """Update detail information of input url"""
+    row = map_to_row(url)
+    update_row(row)
 
 
 if __name__ == "__main__":
-    connection = initailize_leaves_database()
-    with connection:
-        row = map_to_row("http://podo10.com")
-        insert_row(row, connection)
-
+    update_url()
