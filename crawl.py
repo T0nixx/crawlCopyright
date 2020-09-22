@@ -1,5 +1,5 @@
 from determine_engine import is_xe_based_soup
-from db_library import insert_row
+from db_library import insert_row, select_urls_by_category
 import requests
 import bs4
 import difflib
@@ -50,7 +50,7 @@ def get_category_dictionary(main_url: str):
         "adult",
         "torrent",
         "streaming",
-        # "link",
+        "link",
     ]
 
     a_tags = div_soup.find_all("a", {"href": True})
@@ -278,64 +278,96 @@ def crawl_from_internals(urls: List[str], main_url: str) -> List[str]:
     return final_externals
 
 
-@click.command()
-@click.argument("url")
-def crawl_link_collection_site(url):
+def crawl_link_collection_site(main_urls: List[str], visited: List[str], options):
     """Crawl site which collects illegal site urls"""
-    if validate_url(url) == False:
-        print("INVALID URL")
+    limit = options["limit"]
+    if limit == 0:
         return 0
-    category_dictionary = get_category_dictionary(url)
-    # print(category_dictionary)
-    url_dict = dict()
-    for category, category_urls in category_dictionary.items():
-        for category_url in category_urls:
-            result = get_external_internal_urls(category_url, url)
-            url_dict[category] = list(
-                set(
-                    result["external"]
-                    if len(result["external"]) > 0
-                    else crawl_from_internals(result["internal"], url)
+    force_crawl = options["force_crawl"]
+    next_urls = []
+    for url in main_urls:
+        if validate_url(url) == False:
+            print("INVALID URL")
+            continue
+
+        if trim_url(url) in visited and force_crawl == False:
+            continue
+        category_dictionary = get_category_dictionary(url)
+        # print(category_dictionary)
+        url_dict = dict()
+        for category, category_urls in category_dictionary.items():
+            for category_url in category_urls:
+                result = get_external_internal_urls(category_url, url)
+                url_dict[category] = list(
+                    set(
+                        result["external"]
+                        if len(result["external"]) > 0
+                        else crawl_from_internals(result["internal"], url)
+                    )
                 )
-            )
 
-    for category, urls in url_dict.items():
-        for url_from_dict in urls:
-            insert_row(
-                {
-                    "main_url": trim_url(url_from_dict),
-                    "expected_category": category,
-                    "main_html_path": None,
-                    "captured_url": None,
-                    "captured_file_path": None,
-                    "google_analytics_code": None,
-                    "telegram_url": None,
-                    "twitter_url": None,
-                    "similarity_group": None,
-                    "engine": None,
-                    "next_url": None,
-                }
-            )
+        for category, urls in url_dict.items():
+            for url_from_dict in urls:
+                insert_row(
+                    {
+                        "main_url": trim_url(url_from_dict),
+                        "expected_category": category,
+                        "main_html_path": None,
+                        "captured_url": None,
+                        "captured_file_path": None,
+                        "google_analytics_code": None,
+                        "telegram_url": None,
+                        "twitter_url": None,
+                        "similarity_group": None,
+                        "engine": None,
+                        "next_url": None,
+                    }
+                )
+                if category == "link":
+                    next_urls.append(url_from_dict)
 
-    insert_row(
-        {
-            "main_url": trim_url(url),
-            "expected_category": "link",
-            "main_html_path": None,
-            "captured_url": None,
-            "captured_file_path": None,
-            "google_analytics_code": None,
-            "telegram_url": None,
-            "twitter_url": None,
-            "similarity_group": None,
-            "engine": None,
-            "next_url": None,
-        }
+        insert_row(
+            {
+                "main_url": trim_url(url),
+                "expected_category": "link",
+                "main_html_path": None,
+                "captured_url": None,
+                "captured_file_path": None,
+                "google_analytics_code": None,
+                "telegram_url": None,
+                "twitter_url": None,
+                "similarity_group": None,
+                "engine": None,
+                "next_url": None,
+            }
+        )
+        visited.append(trim_url(url))
+
+    crawl_link_collection_site(
+        next_urls, visited, {"limit": limit - 1, "force_crawl": force_crawl}
     )
 
-    return url_dict
+    return 1
+
+
+@click.command()
+@click.argument("url")
+@click.option("-l", "--limit", default=1, type=int, help="depth for recursive crawling")
+@click.option(
+    "-f",
+    "--force-crawl",
+    default=False,
+    type=bool,
+    help="bool for force crawl visited site",
+)
+def main(url, limit: int, force_crawl: bool):
+    visited_link_urls = select_urls_by_category("link")
+    print(visited_link_urls)
+    crawl_link_collection_site(
+        [url], visited_link_urls, {"limit": limit, "force_crawl": force_crawl}
+    )
 
 
 if __name__ == "__main__":
     # pylint: disable=no-value-for-parameter
-    crawl_link_collection_site()
+    main()
