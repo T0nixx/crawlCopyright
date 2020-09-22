@@ -126,4 +126,5 @@ def update_url(url: str):
 
 
 if __name__ == "__main__":
+    # pylint: disable=no-value-for-parameter
     update_url()
