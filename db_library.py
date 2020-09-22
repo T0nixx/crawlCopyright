@@ -3,13 +3,13 @@ from typing import List, Dict, Optional
 from url_library import trim_url
 
 
-def initialize_leaves_database():
+def initialize_database():
     with sqlite3.connect("illegals.db") as db_connection:
         cursor = db_connection.cursor()
 
         cursor.execute(
             """
-            CREATE TABLE IF NOT EXISTS illegal_leaves(
+            CREATE TABLE IF NOT EXISTS illegal_sites(
                 main_url TEXT PRIMARY KEY,
                 main_html_path TEXT,
                 captured_url TEXT,
@@ -29,11 +29,11 @@ def initialize_leaves_database():
 
 
 def insert_row(row: Dict[str, Optional[str]]):
-    connection = initialize_leaves_database()
+    connection = initialize_database()
     with connection:
         cursor = connection.cursor()
         sql = f"""
-            INSERT OR REPLACE INTO illegal_leaves VALUES (
+            INSERT OR REPLACE INTO illegal_sites VALUES (
                 ?,
                 ?,
                 ?,
@@ -68,20 +68,20 @@ def insert_row(row: Dict[str, Optional[str]]):
 
 
 def update_row(row: Dict[str, Optional[str]]):
-    connection = initialize_leaves_database()
+    connection = initialize_database()
     with connection:
         cursor = connection.cursor()
         # None으로 업데이트하지 않을 것이라고 가정
         will_be_updated = [
             (key, value)
             for key, value in row.items()
-            if value is not None or key != "main_url"
+            if value is not None and key != "main_url"
         ]
 
         for key, value in will_be_updated:
             # {trim_url(row['main_url'])}
             sql = f"""
-                UPDATE illegal_leaves 
+                UPDATE illegal_sites 
                 SET {key} = ? 
                 WHERE main_url = ?
                 """
