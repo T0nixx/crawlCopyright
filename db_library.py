@@ -89,3 +89,20 @@ def update_row(row: Dict[str, Optional[str]]):
             cursor.execute(sql, (value, trim_url(row["main_url"])))
         connection.commit()
     return connection
+
+
+def select_urls_by_category(category):
+    connection = initialize_database()
+    with connection:
+        cursor = connection.cursor()
+
+        sql = f"""
+            SELECT main_url
+            FROM illegal_sites
+            WHERE expected_category = ?
+        """
+
+        result = cursor.execute(sql, (category,))
+
+        connection.commit()
+        return [url for (url,) in result.fetchall()]
