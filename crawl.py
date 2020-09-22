@@ -1,9 +1,16 @@
-from determine_engine import is_xe_based_soup
-from db_library import insert_row, select_urls_by_category
-import requests
 import bs4
-import difflib
-import re
+import click
+from request_with_fake_headers import request_with_fake_headers
+
+# from crawl_none_category import crawl_none_category_dictionary
+from soup_library import (
+    crawl_from_internals,
+    get_a_soup_of_difference,
+    get_external_url_set,
+    get_internal_url_set,
+    is_xe_based_soup,
+)
+from db_library import insert_row, select_urls_by_category
 from typing import Set, List, Optional
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from collections import Counter
@@ -14,10 +21,7 @@ from url_library import (
     trim_url,
     normalize_url,
     is_internal_specific_url,
-    remove_page_query,
 )
-import click
-from request_with_fake_headers import request_with_fake_headers
 
 
 def classify_tag(text: str) -> str:
@@ -56,7 +60,7 @@ def get_category_dictionary(main_url: str):
     a_tags = div_soup.find_all("a", {"href": True})
     url_text_tuples = [(a_tag["href"].strip(), a_tag.text) for a_tag in a_tags]
 
-    return {
+    category_dictionary = {
         # TODO: 누더기...
         category: set(
             filter(
@@ -73,7 +77,7 @@ def get_category_dictionary(main_url: str):
                     and href.find("document_srl") == -1
                     and not (
                         # XE 쓰는 사이트에서 index 숨겼을 때 게시판 까지만 참조하도록함
-                        is_xe_based_soup(soup)
+                        is_xe_based_soup(soup) == True
                         and len(urlparse(href).path.split("/")) > 2
                     )
                     and href != main_url
@@ -83,6 +87,8 @@ def get_category_dictionary(main_url: str):
         )
         for category in categories
     }
+
+    return category_dictionary
 
 
 def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[str]:
@@ -119,49 +125,6 @@ def get_next_page_url(a_soup: bs4.BeautifulSoup, current_url: str) -> Optional[s
         )
         else None
     )
-
-
-def get_external_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
-    stripped = [a_tag["href"].strip() for a_tag in soup.find_all("a", {"href": True})]
-    return set(
-        [
-            external_url
-            for external_url in stripped
-            if is_internal_url(external_url, main_url) == False
-        ]
-    )
-
-
-def get_internal_url_set(soup: bs4.BeautifulSoup, main_url: str) -> Set[str]:
-    stripped = [
-        a_tag["href"].strip()
-        for a_tag in soup.find_all("a", {"href": True})
-        if len(a_tag["href"]) > 0
-    ]
-
-    return set(
-        [
-            "http" in internal_url
-            and internal_url
-            or main_url + assemble_url(internal_url)
-            for internal_url in stripped
-            if is_internal_url(internal_url, main_url) == True
-        ]
-    )
-
-
-def get_a_soup_of_difference(
-    a_soup: bs4.BeautifulSoup, b_soup: bs4.BeautifulSoup
-) -> bs4.BeautifulSoup:
-    # diff 성능이 좋지 않은 사이트들이 있음
-    diff = difflib.unified_diff(
-        a_soup.prettify().splitlines(), b_soup.prettify().splitlines()
-    )
-    # TODO: 정규 표현식 더 상세하게 수정 필요
-    pattern = re.compile("<a.*>")
-
-    a_tags_of_diff = pattern.findall("\n".join(filter(lambda x: x[0] == "-", diff)))
-    return bs4.BeautifulSoup("\n".join(a_tags_of_diff), "html5lib")
 
 
 def get_external_internal_urls(category_url: str, main_url: str):
@@ -227,57 +190,6 @@ def get_external_internal_urls(category_url: str, main_url: str):
     }
 
 
-def crawl_from_internals(urls: List[str], main_url: str) -> List[str]:
-    urls_without_page = [remove_page_query(url) for url in urls]
-    # print(urls_without_page)
-    soups = []
-
-    for url in urls_without_page:
-        try:
-            soup = bs4.BeautifulSoup(request_with_fake_headers(url).content, "html5lib")
-        except:
-            pass
-        else:
-            soups.append(soup)
-    diff_soups = [
-        # 다음 페이지가 있으면 여기서 자기들 끼리 비교해서 page 관련 태그를 없애고자 함
-        get_a_soup_of_difference(soups[index], soups[index - 1])
-        for index, _ in enumerate(soups)
-    ]
-
-    internals = [
-        diff_soup.find("a", {"href": re.compile(r"&no=")}) for diff_soup in diff_soups
-    ]
-
-    filtered_internals = [
-        internal["href"] for internal in internals if internal is not None
-    ]
-
-    final_internals = []
-    for filtered_url in filtered_internals:
-        try:
-            result = requests.get(filtered_url, headers={"referer": filtered_url}).url
-        except:
-            pass
-        else:
-            final_internals.append(result)
-
-    if len(final_internals) > 0:
-        return final_internals
-
-    externals = [
-        [
-            a_tag["href"]
-            for a_tag in diff_soup.find_all("a", {"href": True})
-            if is_internal_url(a_tag["href"], main_url) == False
-        ]
-        for diff_soup in diff_soups
-    ]
-
-    final_externals = [external[0] for external in externals if len(external) > 0]
-    return final_externals
-
-
 def crawl_link_collection_site(main_urls: List[str], visited: List[str], options):
     """Crawl site which collects illegal site urls"""
     limit = options["limit"]
@@ -285,29 +197,39 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
         return 0
     force_crawl = options["force_crawl"]
     next_urls = []
-    for url in main_urls:
-        if validate_url(url) == False:
-            print("INVALID URL")
+    for main_url in main_urls:
+        if validate_url(main_url) == False:
+            click.echo("INVALID URL")
             continue
 
-        if trim_url(url) in visited and force_crawl == False:
+        if trim_url(main_url) in visited and force_crawl == False:
             continue
-        category_dictionary = get_category_dictionary(url)
+        category_dictionary = get_category_dictionary(main_url)
+        click.echo("COLLECTING CATEGORY DICTIONARY IS DONE")
         # print(category_dictionary)
-        url_dict = dict()
+        specific_url_dict = dict()
+        # is_none_category_url = True
+        # for category_urls in category_dictionary.values():
+        #     if len(category_urls) > 0:
+        #         is_none_category_url = False
+
+        # if is_none_category_url == True:
+        #     specific_url_dict = crawl_none_category_dictionary(main_url)
+        # else:
         for category, category_urls in category_dictionary.items():
             for category_url in category_urls:
-                result = get_external_internal_urls(category_url, url)
-                url_dict[category] = list(
+                result = get_external_internal_urls(category_url, main_url)
+                click.echo(f"COLLECTING URLS FOR {category} OF {main_url} IS DONE")
+                specific_url_dict[category] = list(
                     set(
                         result["external"]
                         if len(result["external"]) > 0
-                        else crawl_from_internals(result["internal"], url)
+                        else crawl_from_internals(result["internal"], main_url)
                     )
                 )
 
-        for category, urls in url_dict.items():
-            for url_from_dict in urls:
+        for category, category_urls in specific_url_dict.items():
+            for url_from_dict in category_urls:
                 insert_row(
                     {
                         "main_url": trim_url(url_from_dict),
@@ -328,7 +250,7 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
 
         insert_row(
             {
-                "main_url": trim_url(url),
+                "main_url": trim_url(main_url),
                 "expected_category": "link",
                 "main_html_path": None,
                 "captured_url": None,
@@ -341,7 +263,8 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
                 "next_url": None,
             }
         )
-        visited.append(trim_url(url))
+        visited.append(trim_url(main_url))
+        click.echo(f"CRAWLING FOR {main_url} IS DONE")
 
     crawl_link_collection_site(
         next_urls, visited, {"limit": limit - 1, "force_crawl": force_crawl}
@@ -362,7 +285,6 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
 )
 def main(url, limit: int, force_crawl: bool):
     visited_link_urls = select_urls_by_category("link")
-    print(visited_link_urls)
     crawl_link_collection_site(
         [url], visited_link_urls, {"limit": limit, "force_crawl": force_crawl}
     )
