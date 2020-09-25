@@ -191,7 +191,6 @@ def get_external_internal_urls(category_url: str, main_url: str):
 
 
 def crawl_link_collection_site(main_urls: List[str], visited: List[str], options):
-    """Crawl site which collects illegal site urls"""
     limit = options["limit"]
     if limit == 0:
         return 0
@@ -199,13 +198,16 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
     next_urls = []
     for main_url in main_urls:
         if validate_url(main_url) == False:
-            click.echo("INVALID URL")
+            click.echo(f"{main_url} is invalid. Please check.")
             continue
 
         if trim_url(main_url) in visited and force_crawl == False:
+            click.echo(
+                f"{main_url} has been already visited. Please check for illegals.db or set --force-crawl option to True."
+            )
             continue
         category_dictionary = get_category_dictionary(main_url)
-        click.echo("COLLECTING CATEGORY DICTIONARY IS DONE")
+        click.echo("Collecting category dictionary is done.")
         # print(category_dictionary)
         specific_url_dict = dict()
         # is_none_category_url = True
@@ -219,7 +221,7 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
         for category, category_urls in category_dictionary.items():
             for category_url in category_urls:
                 result = get_external_internal_urls(category_url, main_url)
-                click.echo(f"COLLECTING URLS FOR {category} OF {main_url} IS DONE")
+                click.echo(f"Collecting urls for {category} of {main_url} is done.")
                 specific_url_dict[category] = list(
                     set(
                         result["external"]
@@ -243,6 +245,7 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
                         "similarity_group": None,
                         "engine": None,
                         "next_url": None,
+                        "have_site_information": 0,
                     }
                 )
                 if category == "link":
@@ -251,7 +254,6 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
         insert_row(
             {
                 "main_url": trim_url(main_url),
-                "expected_category": "link",
                 "main_html_path": None,
                 "captured_url": None,
                 "captured_file_path": None,
@@ -261,10 +263,12 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
                 "similarity_group": None,
                 "engine": None,
                 "next_url": None,
+                "expected_category": "link",
+                "have_site_information": 0,
             }
         )
         visited.append(trim_url(main_url))
-        click.echo(f"CRAWLING FOR {main_url} IS DONE")
+        click.echo(f"Crawling for {main_url} is done.")
 
     crawl_link_collection_site(
         next_urls, visited, {"limit": limit - 1, "force_crawl": force_crawl}
@@ -284,6 +288,8 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
     help="bool for force crawl visited site",
 )
 def main(url, limit: int, force_crawl: bool):
+    """Crawl site which collects illegal site urls"""
+
     visited_link_urls = select_urls_by_category("link")
     crawl_link_collection_site(
         [url], visited_link_urls, {"limit": limit, "force_crawl": force_crawl}

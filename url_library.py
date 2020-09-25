@@ -63,13 +63,14 @@ def is_main_url(url: str):
 
 def trim_url(url: str) -> str:
     stripped = url.strip()
-    url_with_https = re.search(r"https://.*", stripped)
-    url_with_http = re.search(r"http://.*", stripped)
-    if url_with_https != None:
-        return url_with_https.group(0)[8:]
-    if url_with_http != None:
-        return url_with_http.group(0)[7:]
-    return stripped
+    # url_with_https = re.search(r"https://.*", stripped)
+    # url_with_http = re.search(r"http://.*", stripped)
+    # if url_with_https != None:
+    #     return urlparse(url).netloc
+    # if url_with_http != None:
+    #     return urlparse(url).netloc
+    # return stripped
+    return urlparse(stripped).netloc
 
 
 def is_internal_specific_url(url: str, category_url: str) -> bool:
