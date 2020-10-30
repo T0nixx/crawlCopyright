@@ -1,10 +1,11 @@
 import requests
-from db_library import (
+from utils.db_library import (
     select_all_urls,
     select_unstored_urls,
+    select_available_urls,
     update_row,
 )
-from soup_library import determine_engine
+from utils.soup_library import determine_engine
 import subprocess
 from pathlib import Path
 import os
@@ -12,14 +13,22 @@ import bs4
 import re
 from typing import List, Optional
 from shutil import rmtree
-from url_library import (
-    trim_url,
+from utils.url_library import (
     is_telegram_url,
     is_twitter_url,
     is_main_url,
 )
 from request_with_fake_headers import request_with_fake_headers
 import click
+import logging
+from utils.now import now
+
+
+logging.basicConfig(
+    filename="get_site_information.log",
+    level=logging.DEBUG,
+    format="%(asctime)s %(message)s",
+)
 
 
 def revise_html(path: Path):
@@ -36,6 +45,7 @@ def revise_html(path: Path):
             with open(path.absolute(), "w+", encoding=encoding) as revised_page:
                 revised_page.writelines(revised_lines)
         except:
+            logging.error("REVISE HTML ERROR")
             continue
         else:
             break
@@ -58,10 +68,24 @@ def rename_css_files(directory):
 def map_to_row(url: str):
     url_with_scheme = "https://" + url if "//" not in url else url
     try:
-        response = requests.get(url_with_scheme)
+        response = requests.get(url_with_scheme, stream=True)
     except:
         click.echo(f"Error has occurred on proccessing {url}")
+        logging.error(f"ERROR ON {url}")
+        return {
+            "main_url": url,
+            "site_available": False,
+            "visited": True,
+            "last_visited_at": now(),
+        }
     else:
+        # in that sock is gone after call response.content ip address is assigned first
+        ip_address = (
+            response.raw.connection.sock.getpeername()[0]
+            if getattr(response.raw.connection, "sock") is not None
+            else None
+        )
+        print(ip_address)
         soup = bs4.BeautifulSoup(response.content, "html5lib")
 
         urls_in_soup = [
@@ -90,7 +114,8 @@ def map_to_row(url: str):
                 ]
             )
         )
-
+        if os.path.exists("./html") == False:
+            os.mkdir("html")
         # trimmed_url = trim_url(url)
         html_dir = Path(f"html/{url}")
 
@@ -139,7 +164,10 @@ def map_to_row(url: str):
             "engine": determine_engine(soup),
             "next_url": None,
             "expected_category": None,
-            "have_site_information": 1,
+            "visited": True,
+            "site_available": True,
+            "ip_address": ip_address,
+            "last_visited_at": now(),
         }
 
 
@@ -167,7 +195,8 @@ def unstored():
     urls = select_unstored_urls()
     for url in urls:
         row = map_to_row(url)
-        update_row(row)
+        if row is not None:
+            update_row(row)
 
 
 @click.group()
@@ -184,7 +213,21 @@ def all():
         update_row(row)
 
 
-cli = click.CommandCollection(sources=[cli1, cli2, cli3])
+@click.group()
+def cli4():
+    pass
+
+
+@cli4.command()
+def available():
+    """Get site information from available sites. This operation can take significantly long time."""
+    urls = select_available_urls()
+    for url in urls:
+        row = map_to_row(url)
+        update_row(row)
+
+
+cli = click.CommandCollection(sources=[cli1, cli2, cli3, cli4])
 
 if __name__ == "__main__":
     # pylint: disable=no-value-for-parameter

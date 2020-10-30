@@ -1,26 +1,32 @@
 import bs4
 import click
+import logging
+from utils.now import now
 from request_with_fake_headers import request_with_fake_headers
 
 # from crawl_none_category import crawl_none_category_dictionary
-from soup_library import (
+from utils.soup_library import (
     crawl_from_internals,
     get_a_soup_of_difference,
     get_external_url_set,
     get_internal_url_set,
     is_xe_based_soup,
 )
-from db_library import insert_row, select_urls_by_category
+from utils.db_library import insert_row, select_urls_by_category, select_all_urls
 from typing import Set, List, Optional
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from collections import Counter
-from url_library import (
+from utils.url_library import (
     is_internal_url,
     assemble_url,
     validate_url,
     trim_url,
     normalize_url,
     is_internal_specific_url,
+)
+
+logging.basicConfig(
+    filename="crawl.log", level=logging.DEBUG, format="%(asctime)s %(message)s"
 )
 
 
@@ -199,10 +205,14 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
     for main_url in main_urls:
         if validate_url(main_url) == False:
             click.echo(f"{main_url} is invalid. Please check.")
+            logging.error(f"{main_url} is invalid.")
             continue
 
         if trim_url(main_url) in visited and force_crawl == False:
             click.echo(
+                f"{main_url} has been already visited. Please check for illegals.db or set --force-crawl option to True."
+            )
+            logging.warning(
                 f"{main_url} has been already visited. Please check for illegals.db or set --force-crawl option to True."
             )
             continue
@@ -230,43 +240,55 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
                     )
                 )
 
+        urls_in_db = select_all_urls()
+        print(urls_in_db)
         for category, category_urls in specific_url_dict.items():
             for url_from_dict in category_urls:
-                insert_row(
-                    {
-                        "main_url": trim_url(url_from_dict),
-                        "expected_category": category,
-                        "main_html_path": None,
-                        "captured_url": None,
-                        "captured_file_path": None,
-                        "google_analytics_code": None,
-                        "telegram_url": None,
-                        "twitter_url": None,
-                        "similarity_group": None,
-                        "engine": None,
-                        "next_url": None,
-                        "have_site_information": 0,
-                    }
-                )
-                if category == "link":
-                    next_urls.append(url_from_dict)
-
-        insert_row(
-            {
-                "main_url": trim_url(main_url),
-                "main_html_path": None,
-                "captured_url": None,
-                "captured_file_path": None,
-                "google_analytics_code": None,
-                "telegram_url": None,
-                "twitter_url": None,
-                "similarity_group": None,
-                "engine": None,
-                "next_url": None,
-                "expected_category": "link",
-                "have_site_information": 0,
-            }
-        )
+                print(trim_url(url_from_dict))
+                if trim_url(url_from_dict) not in urls_in_db:
+                    insert_row(
+                        {
+                            "main_url": trim_url(url_from_dict),
+                            "expected_category": category,
+                            "main_html_path": None,
+                            "captured_url": None,
+                            "captured_file_path": None,
+                            "google_analytics_code": None,
+                            "telegram_url": None,
+                            "twitter_url": None,
+                            "similarity_group": None,
+                            "engine": None,
+                            "next_url": None,
+                            "visited": 0,
+                            "site_available": 0,
+                            "ip_address": None,
+                            "created_at": now(),
+                            "last_visited_at": None,
+                        }
+                    )
+                    if category == "link":
+                        next_urls.append(url_from_dict)
+        if trim_url(main_url) not in urls_in_db:
+            insert_row(
+                {
+                    "main_url": trim_url(main_url),
+                    "main_html_path": None,
+                    "captured_url": None,
+                    "captured_file_path": None,
+                    "google_analytics_code": None,
+                    "telegram_url": None,
+                    "twitter_url": None,
+                    "similarity_group": None,
+                    "engine": None,
+                    "next_url": None,
+                    "expected_category": "link",
+                    "visited": 0,
+                    "site_available": 0,
+                    "ip_address": None,
+                    "created_at": now(),
+                    "last_visited_at": None,
+                }
+            )
         visited.append(trim_url(main_url))
         click.echo(f"Crawling for {main_url} is done.")
 
@@ -289,7 +311,7 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
 )
 def main(url, limit: int, force_crawl: bool):
     """Crawl site which collects illegal site urls"""
-
+    logging.info("PROCESS STARTED")
     visited_link_urls = select_urls_by_category("link")
     crawl_link_collection_site(
         [url], visited_link_urls, {"limit": limit, "force_crawl": force_crawl}

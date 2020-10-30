@@ -1,6 +1,5 @@
 import sqlite3
-from typing import List, Dict, Optional
-from url_library import trim_url
+from typing import Dict, Optional
 
 
 def initialize_database():
@@ -21,7 +20,11 @@ def initialize_database():
                 engine TEXT,
                 next_url TEXT,
                 expected_category TEXT,
-                have_site_information BOOLEAN
+                visited BOOLEAN,
+                site_available BOOLEAN,
+                ip_address TEXT,
+                created_at TEXT,
+                last_visited_at TEXT
             )
         """
         )
@@ -35,6 +38,8 @@ def insert_row(row: Dict[str, Optional[str]]):
         cursor = connection.cursor()
         sql = f"""
             INSERT OR REPLACE INTO illegal_sites VALUES (
+                ?,
+                ?,
                 ?,
                 ?,
                 ?,
@@ -63,7 +68,11 @@ def insert_row(row: Dict[str, Optional[str]]):
                 row["engine"],
                 row["next_url"],
                 row["expected_category"],
-                row["have_site_information"],
+                row["visited"],
+                row["site_available"],
+                row["ip_address"],
+                row["created_at"],
+                row["last_visited_at"],
             ),
         )
         connection.commit()
@@ -71,9 +80,6 @@ def insert_row(row: Dict[str, Optional[str]]):
 
 
 def update_row(row: Dict[str, Optional[str]]):
-    if row is None:
-        return
-
     connection = initialize_database()
     with connection:
         cursor = connection.cursor()
@@ -122,7 +128,7 @@ def select_unstored_urls():
         sql = f"""
             SELECT main_url
             FROM illegal_sites
-            WHERE have_site_information = ?
+            WHERE visited = ?
         """
 
         result = cursor.execute(sql, (0,))
@@ -142,6 +148,23 @@ def select_all_urls():
         """
 
         result = cursor.execute(sql)
+
+        connection.commit()
+        return [url for (url,) in result.fetchall()]
+
+
+def select_available_urls():
+    connection = initialize_database()
+    with connection:
+        cursor = connection.cursor()
+
+        sql = f"""
+            SELECT main_url
+            FROM illegal_sites
+            WHERE site_available = ?
+        """
+
+        result = cursor.execute(sql, (1,))
 
         connection.commit()
         return [url for (url,) in result.fetchall()]

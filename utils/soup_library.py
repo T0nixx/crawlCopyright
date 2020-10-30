@@ -3,8 +3,7 @@ import difflib
 import re
 import requests
 from typing import Set, List
-from url_library import (
-    is_xe_based_url,
+from utils.url_library import (
     assemble_url,
     is_internal_url,
     remove_page_query,
@@ -23,7 +22,7 @@ def is_gnu_based_soup(soup: bs4.BeautifulSoup):
 def determine_engine(soup: bs4.BeautifulSoup):
     if is_gnu_based_soup(soup) == True:
         return "gnu"
-    if is_xe_based_url(soup) == True:
+    if is_xe_based_soup(soup) == True:
         return "XE"
     return None
 
