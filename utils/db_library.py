@@ -51,6 +51,8 @@ def insert_row(row: Dict[str, Optional[str]]):
                 ?,
                 ?,
                 ?,
+                ?,
+                ?,
                 ?
             )
         """
