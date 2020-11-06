@@ -133,7 +133,7 @@ def select_unstored_urls():
             WHERE visited = ?
         """
 
-        result = cursor.execute(sql, (0,))
+        result = cursor.execute(sql, (False,))
 
         connection.commit()
         return [url for (url,) in result.fetchall()]
@@ -166,7 +166,7 @@ def select_available_urls():
             WHERE site_available = ?
         """
 
-        result = cursor.execute(sql, (1,))
+        result = cursor.execute(sql, (True,))
 
         connection.commit()
         return [url for (url,) in result.fetchall()]
