@@ -45,7 +45,7 @@ def revise_html(path: Path):
             with open(path.absolute(), "w+", encoding=encoding) as revised_page:
                 revised_page.writelines(revised_lines)
         except:
-            logging.error("REVISE HTML ERROR")
+            logging.error(str(path) + "REVISE HTML ERROR")
             continue
         else:
             break
