@@ -16,7 +16,7 @@ from shutil import rmtree
 from utils.url_library import (
     is_telegram_url,
     is_twitter_url,
-    is_main_url,
+    is_main_url, trim_url,
 )
 from request_with_fake_headers import request_with_fake_headers
 import click
@@ -66,9 +66,8 @@ def rename_css_files(directory):
 
 
 def map_to_row(url: str):
-    url_with_scheme = "https://" + url if "//" not in url else url
     try:
-        response = requests.get(url_with_scheme, stream=True)
+        response = requests.get(url, stream=True)
     except:
         click.echo(f"Error has occurred on proccessing {url}")
         logging.error(f"ERROR ON {url}")
@@ -78,97 +77,98 @@ def map_to_row(url: str):
             "visited": True,
             "last_visited_at": now(),
         }
-    else:
-        # in that sock is gone after call response.content ip address is assigned first
-        ip_address = (
-            response.raw.connection.sock.getpeername()[0]
-            if getattr(response.raw.connection, "sock") is not None
-            else None
-        )
-        print(ip_address)
-        soup = bs4.BeautifulSoup(response.content, "html5lib")
 
-        urls_in_soup = [
-            a_tag["href"].strip() for a_tag in soup.find_all("a", {"href": True})
-        ]
+    # in that sock is gone after call response.content ip address is assigned
+    ip_address = (
+        response.raw.connection.sock.getpeername()[0]
+        if getattr(response.raw.connection, "sock") is not None
+        else None
+    )
+    
+    soup = bs4.BeautifulSoup(response.content, "html5lib")
 
-        telegram_urls = [
-            url
-            for url in urls_in_soup
-            if is_telegram_url(url) == True and is_main_url(url) == False
-        ]
+    urls_in_soup = [
+        a_tag["href"].strip() for a_tag in soup.find_all("a", {"href": True})
+    ]
 
-        twitter_urls = [
-            url
-            for url in urls_in_soup
-            if is_twitter_url(url) == True and is_main_url(url) == False
-        ]
+    telegram_urls = [
+        url
+        for url in urls_in_soup
+        if is_telegram_url(url) == True and is_main_url(url) == False
+    ]
 
-        google_analytics_pattern = re.compile(r"UA-[0-9]{9}-[0-9]+")
+    twitter_urls = [
+        url
+        for url in urls_in_soup
+        if is_twitter_url(url) == True and is_main_url(url) == False
+    ]
 
-        google_analytics_codes = google_analytics_pattern.findall(
-            " ".join(
-                [
-                    str(script_tag)
-                    for script_tag in soup.find_all("script", {"src": True})
-                ]
-            )
-        )
-        if os.path.exists("./html") == False:
-            os.mkdir("html")
-        # trimmed_url = trim_url(url)
-        html_dir = Path(f"html/{url}")
+    google_analytics_pattern = re.compile(r"UA-[0-9]{9}-[0-9]+")
 
-        if os.path.exists(html_dir) == True:
-            # 이미 있는 경우 해당 폴더 삭제
-            rmtree(html_dir)
-
-        wget_result = subprocess.run(
+    google_analytics_codes = google_analytics_pattern.findall(
+        " ".join(
             [
-                "./wget.exe",
-                "-pqk",
-                "-U",
-                "Mozilla",
-                "-P",
-                "./html/",
-                "-e",
-                "robots=off",
-                url,
+                str(script_tag)
+                for script_tag in soup.find_all("script", {"src": True})
             ]
         )
-        # wget 실패하는 경우에 대한 처리 필요
-        # if wget_result.returncode != 0:
-        #     print(wget_result)
-        index_html_path = html_dir / "index.html"
-        revise_html(index_html_path)
+    )
+    if os.path.exists("./html") == False:
+        os.mkdir("html")
+    # trimmed_url = trim_url(url)
+    html_dir = Path(f"html/{trim_url(url)}")
 
-        # TODO: os.chdir 비직관적임 대체 가능하면 바꿔야함 있으면 삭제하고 없으면 만드는데..?
-        if os.path.exists(html_dir) == False:
-            os.mkdir(html_dir)
-        os.chdir(html_dir)
-        rename_css_files(".")
-        os.chdir("../..")
+    if os.path.exists(html_dir) == True:
+        # 이미 있는 경우 해당 폴더 삭제
+        rmtree(html_dir)
 
-        def get_first_or_none(target: List[str]) -> Optional[str]:
-            return None if len(target) == 0 else target[0]
+    wget_result = subprocess.run(
+        [
+            "./wget.exe",
+            "-pqk",
+            "-U",
+            "Mozilla",
+            "-P",
+            "./html/",
+            "-e",
+            "robots=off",
+            "--no-check-certificate",
+            url,
+        ]
+    )
+    # wget 실패하는 경우에 대한 처리 필요
+    # if wget_result.returncode != 0:
+    #     print(wget_result)
+    index_html_path = html_dir / "index.html"
+    revise_html(index_html_path)
 
-        return {
-            "main_url": url,
-            "main_html_path": str(html_dir.absolute()),
-            "captured_url": None,
-            "captured_file_path": None,
-            "google_analytics_code": get_first_or_none(google_analytics_codes),
-            "telegram_url": get_first_or_none(telegram_urls),
-            "twitter_url": get_first_or_none(twitter_urls),
-            "similarity_group": None,
-            "engine": determine_engine(soup),
-            "next_url": None,
-            "expected_category": None,
-            "visited": True,
-            "site_available": True,
-            "ip_address": ip_address,
-            "last_visited_at": now(),
-        }
+    # TODO: os.chdir 비직관적임 대체 가능하면 바꿔야함 있으면 삭제하고 없으면 만드는데..?
+    if os.path.exists(html_dir) == False:
+        os.mkdir(html_dir)
+    os.chdir(html_dir)
+    rename_css_files(".")
+    os.chdir("../..")
+
+    def get_first_or_none(target: List[str]) -> Optional[str]:
+        return None if len(target) == 0 else target[0]
+
+    return {
+        "main_url": url,
+        "main_html_path": str(html_dir.absolute()),
+        "captured_url": None,
+        "captured_file_path": None,
+        "google_analytics_code": get_first_or_none(google_analytics_codes),
+        "telegram_url": get_first_or_none(telegram_urls),
+        "twitter_url": get_first_or_none(twitter_urls),
+        "similarity_group": None,
+        "engine": determine_engine(soup),
+        "next_url": None,
+        "expected_category": None,
+        "visited": True,
+        "site_available": True,
+        "ip_address": ip_address,
+        "last_visited_at": now(),
+    }
 
 
 @click.group()
