@@ -20,6 +20,7 @@ from utils.url_library import (
     is_internal_url,
     assemble_url,
     validate_url,
+    trim_url,
     normalize_url,
     is_internal_specific_url,
 )
@@ -207,7 +208,7 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
             logging.error(f"{main_url} is invalid.")
             continue
 
-        if main_url in visited and force_crawl == False:
+        if trim_url(main_url) in visited and force_crawl == False:
             click.echo(
                 f"{main_url} has been already visited. Please check for illegals.db or set --force-crawl option to True."
             )
@@ -243,11 +244,11 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
         print(urls_in_db)
         for category, category_urls in specific_url_dict.items():
             for url_from_dict in category_urls:
-                print(url_from_dict)
-                if url_from_dict not in urls_in_db:
+                print(trim_url(url_from_dict))
+                if trim_url(url_from_dict) not in urls_in_db:
                     insert_row(
                         {
-                            "main_url": url_from_dict,
+                            "main_url": trim_url(url_from_dict),
                             "expected_category": category,
                             "main_html_path": None,
                             "captured_url": None,
@@ -267,10 +268,10 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
                     )
                     if category == "link":
                         next_urls.append(url_from_dict)
-        if main_url not in urls_in_db:
+        if trim_url(main_url) not in urls_in_db:
             insert_row(
                 {
-                    "main_url": main_url,
+                    "main_url": trim_url(main_url),
                     "main_html_path": None,
                     "captured_url": None,
                     "captured_file_path": None,
@@ -288,7 +289,7 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
                     "last_visited_at": None,
                 }
             )
-        visited.append(main_url)
+        visited.append(trim_url(main_url))
         click.echo(f"Crawling for {main_url} is done.")
 
     crawl_link_collection_site(
