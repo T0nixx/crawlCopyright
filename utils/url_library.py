@@ -70,7 +70,7 @@ def trim_url(url: str) -> str:
     # if url_with_http != None:
     #     return urlparse(url).netloc
     # return stripped
-    return urlparse(stripped).netloc
+    return stripped[:-1] if stripped[-1] == "/" else stripped
 
 
 def is_internal_specific_url(url: str, category_url: str) -> bool:
