@@ -44,19 +44,19 @@ def validate_url(url: str) -> bool:
 
 
 def is_telegram_url(url: str):
-    if "telegram.me" not in url and "t.me/" not in url:
+    if "telegram.me" not in url and "//t.me/" not in url:
         return False
     return True
 
 
 def is_twitter_url(url: str):
-    if "twitter.com" not in url and "t.co/" not in url:
+    if "twitter.com" not in url and "//t.co/" not in url:
         return False
     return True
 
 
 def is_main_url(url: str):
-    if urlparse(url).path == "":
+    if urlparse(normalize_url(url)).path == "":
         return True
     return False
 
