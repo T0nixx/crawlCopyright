@@ -17,6 +17,7 @@ from utils.url_library import (
     is_telegram_url,
     is_twitter_url,
     is_main_url,
+    trim_url,
 )
 from request_with_fake_headers import request_with_fake_headers
 import click
@@ -66,9 +67,9 @@ def rename_css_files(directory):
 
 
 def map_to_row(url: str):
-    url_with_scheme = "https://" + url if "//" not in url else url
+    # url_with_scheme = "https://" + url if "//" not in url else url
     try:
-        response = requests.get(url_with_scheme, stream=True)
+        response = requests.get(url, stream=True)
     except:
         click.echo(f"Error has occurred on proccessing {url}")
         logging.error(f"ERROR ON {url}")
@@ -117,7 +118,7 @@ def map_to_row(url: str):
         if os.path.exists("./html") == False:
             os.mkdir("html")
         # trimmed_url = trim_url(url)
-        html_dir = Path(f"html/{url}")
+        html_dir = Path(f"html/{trim_url(url)}")
 
         if os.path.exists(html_dir) == True:
             # 이미 있는 경우 해당 폴더 삭제
