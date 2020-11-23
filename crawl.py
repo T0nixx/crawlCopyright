@@ -1,6 +1,7 @@
 import bs4
 import click
 import logging
+import requests
 from utils.now import now
 from request_with_fake_headers import request_with_fake_headers
 
@@ -45,8 +46,14 @@ def classify_tag(text: str) -> str:
     return "else"
 
 
+def is_redirected(url: str, response: requests.Response):
+    return url != response.url
+
+
 def get_category_dictionary(main_url: str):
     response = request_with_fake_headers(main_url)
+    if is_redirected(main_url, response) == True:
+        main_url = response.url
     soup = bs4.BeautifulSoup(response.content, "html5lib")
     # TODO: 필요한 지 생각해봐야함
     div_soup = bs4.BeautifulSoup(
@@ -136,16 +143,19 @@ def get_external_internal_urls(category_url: str, main_url: str):
     category_response = request_with_fake_headers(category_url)
     category_soup = bs4.BeautifulSoup(category_response.content, "html5lib")
 
-    normalized_main_url = normalize_url(main_url)
-    main_response = request_with_fake_headers(normalized_main_url)
+    main_response = request_with_fake_headers(main_url)
     main_soup = bs4.BeautifulSoup(main_response.content, "html5lib")
+    if is_redirected(main_url, main_response) == True:
+        main_url = main_response.url
+
+    normalized_main_url = normalize_url(main_url)
 
     a_soup_of_category_diff_main = get_a_soup_of_difference(category_soup, main_soup)
 
     next_page_url = get_next_page_url(a_soup_of_category_diff_main, category_url)
-    limit = 0
+    page_count = 0
     category_soups: List[bs4.BeautifulSoup] = [category_soup]
-    while next_page_url is not None and limit < 5:
+    while next_page_url is not None and page_count < 5:
         current_page_url = next_page_url
         current_page_response = request_with_fake_headers(current_page_url)
         current_page_soup = bs4.BeautifulSoup(current_page_response.content, "html5lib")
@@ -153,7 +163,7 @@ def get_external_internal_urls(category_url: str, main_url: str):
         current_diff_a_soup = get_a_soup_of_difference(current_page_soup, main_soup)
         category_soups.append(current_page_soup)
         next_page_url = get_next_page_url(current_diff_a_soup, current_page_url)
-        limit += 1
+        page_count += 1
 
     diff_soups = (
         len(category_soups) > 1
@@ -201,13 +211,15 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
         return 0
     force_crawl = options["force_crawl"]
     next_urls = []
+
     for main_url in main_urls:
         if validate_url(main_url) == False:
             click.echo(f"{main_url} is invalid. Please check.")
             logging.error(f"{main_url} is invalid.")
             continue
 
-        if normalize_url(main_url) in visited and force_crawl == False:
+        normalized_main_url = normalize_url(main_url)
+        if normalized_main_url in visited and force_crawl == False:
             click.echo(
                 f"{main_url} has been already visited. Please check for illegals.db or set --force-crawl option to True."
             )
@@ -240,55 +252,40 @@ def crawl_link_collection_site(main_urls: List[str], visited: List[str], options
                 )
 
         urls_in_db = select_all_urls()
-        print(urls_in_db)
+        # print(urls_in_db)
+
+        def get_default_row(url, expected_category):
+            return {
+                "main_url": url,
+                "expected_category": expected_category,
+                "main_html_path": None,
+                "captured_url": None,
+                "captured_file_path": None,
+                "google_analytics_code": None,
+                "telegram_url": None,
+                "twitter_url": None,
+                "similarity_group": None,
+                "engine": None,
+                "next_url": None,
+                "visited": False,
+                "site_available": False,
+                "ip_address": None,
+                "created_at": now(),
+                "last_visited_at": None,
+            }
+
         for category, category_urls in specific_url_dict.items():
             for url_from_dict in category_urls:
-                print(normalize_url(url_from_dict))
-                if normalize_url(url_from_dict) not in urls_in_db:
-                    insert_row(
-                        {
-                            "main_url": normalize_url(url_from_dict),
-                            "expected_category": category,
-                            "main_html_path": None,
-                            "captured_url": None,
-                            "captured_file_path": None,
-                            "google_analytics_code": None,
-                            "telegram_url": None,
-                            "twitter_url": None,
-                            "similarity_group": None,
-                            "engine": None,
-                            "next_url": None,
-                            "visited": 0,
-                            "site_available": 0,
-                            "ip_address": None,
-                            "created_at": now(),
-                            "last_visited_at": None,
-                        }
-                    )
+                normalized_url_from_dict = normalize_url(url_from_dict)
+                print(normalized_url_from_dict)
+                if normalized_url_from_dict not in urls_in_db:
+                    insert_row(get_default_row(normalized_url_from_dict, category))
                     if category == "link":
                         next_urls.append(url_from_dict)
-        if normalize_url(main_url) not in urls_in_db:
-            insert_row(
-                {
-                    "main_url": normalize_url(main_url),
-                    "main_html_path": None,
-                    "captured_url": None,
-                    "captured_file_path": None,
-                    "google_analytics_code": None,
-                    "telegram_url": None,
-                    "twitter_url": None,
-                    "similarity_group": None,
-                    "engine": None,
-                    "next_url": None,
-                    "expected_category": "link",
-                    "visited": 0,
-                    "site_available": 0,
-                    "ip_address": None,
-                    "created_at": now(),
-                    "last_visited_at": None,
-                }
-            )
-        visited.append(normalize_url(main_url))
+
+        if normalized_main_url not in urls_in_db:
+            insert_row(get_default_row(normalized_main_url, "link"))
+        visited.append(normalized_main_url)
         click.echo(f"Crawling for {main_url} is done.")
 
     crawl_link_collection_site(
