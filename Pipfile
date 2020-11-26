@@ -15,6 +15,7 @@ html5lib = "*"
 python-twitter = "*"
 click = "*"
 html-similarity = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.7"

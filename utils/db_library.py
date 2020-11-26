@@ -170,3 +170,20 @@ def select_available_urls():
 
         connection.commit()
         return [url for (url,) in result.fetchall()]
+
+
+def get_site_data():
+    connection = initialize_database()
+    with connection:
+        cursor = connection.cursor()
+
+        sql = f"""
+            SELECT main_url, site_available, created_at, last_visited_at
+            FROM illegal_sites
+            ORDER BY last_visited_at DESC
+        """
+        # WHERE main_html_path IS NOT NULL
+        result = cursor.execute(sql)
+
+        connection.commit()
+        return list(result.fetchall())
