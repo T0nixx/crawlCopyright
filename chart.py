@@ -43,7 +43,6 @@ def main():
         part_delta: timedelta = datum["last_visited_date"] - datum["created_date"]
         for day in range(part_delta.days):
             created_available_dict[datum["created_date"] + timedelta(days=day)] += 1
-    created_available_dict[datetime(2020, 11, 24)] = 80
     x_values = created_available_dict.keys()
     y_values = created_available_dict.values()
 
