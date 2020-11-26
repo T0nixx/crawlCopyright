@@ -16,6 +16,7 @@ python-twitter = "*"
 click = "*"
 html-similarity = "*"
 matplotlib = "*"
+pytz = "*"
 
 [requires]
 python_version = "3.7"
